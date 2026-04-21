@@ -15,8 +15,11 @@ from .models import Lead, AnalysisJob, JobStatus
 from .config import settings
 from .analyzers.complexity_scorer import ComplexityScorer
 from .reports.pdf_generator import PDFReportGenerator
+from .converters.schema_converter import SchemaConverter
+from .converters.plsql_converter import PlSqlConverter
+from .converters.oracle_functions import OracleFunctionConverter
 
-app = FastAPI(title="Depart API", version="0.1.0")
+app = FastAPI(title="Depart API", version="0.2.0")
 
 # CORS middleware
 app.add_middleware(
@@ -206,6 +209,100 @@ async def get_pdf_report(job_id: str, db: Session = Depends(get_db)):
         )
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid job ID format")
+
+
+# ============================================================================
+# Phase 2: Conversion Endpoints
+# ============================================================================
+
+class ConvertRequest(BaseModel):
+    code: str
+    construct_type: str  # "PROCEDURE", "FUNCTION", "TABLE", "VIEW", "SEQUENCE", "INDEX"
+
+
+class ConvertResponse(BaseModel):
+    original: str
+    converted: str
+    success: bool
+    method: str
+    warnings: list
+    errors: list
+
+
+@app.post("/api/v2/convert/plsql")
+async def convert_plsql(request: ConvertRequest):
+    """Convert PL/SQL procedure/function to PL/pgSQL."""
+    try:
+        converter = PlSqlConverter(use_llm=bool(settings.anthropic_api_key))
+
+        if request.construct_type.upper() == "FUNCTION":
+            result = converter.convert_function(request.code)
+        else:
+            result = converter.convert_procedure(request.code)
+
+        return ConvertResponse(
+            original=result.original,
+            converted=result.converted,
+            success=result.success,
+            method=result.method,
+            warnings=result.warnings,
+            errors=result.errors,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v2/convert/schema")
+async def convert_schema_ddl(request: ConvertRequest):
+    """Convert Oracle DDL (tables, indexes, views, sequences) to PostgreSQL."""
+    try:
+        converter = SchemaConverter()
+        result = converter.convert(request.code)
+
+        return ConvertResponse(
+            original=result.original,
+            converted=result.converted,
+            success=True,
+            method="deterministic",
+            warnings=result.warnings,
+            errors=[],
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v2/convert/batch")
+async def convert_batch(batch: list[ConvertRequest]):
+    """Convert multiple PL/SQL items in a batch (for full package conversion)."""
+    try:
+        results = []
+        plsql_converter = PlSqlConverter(use_llm=bool(settings.anthropic_api_key))
+        schema_converter = SchemaConverter()
+
+        for item in batch:
+            if item.construct_type.upper() in ["PROCEDURE", "FUNCTION"]:
+                if item.construct_type.upper() == "FUNCTION":
+                    result = plsql_converter.convert_function(item.code)
+                else:
+                    result = plsql_converter.convert_procedure(item.code)
+            else:
+                schema_result = schema_converter.convert(item.code)
+                result = schema_result
+
+            results.append(
+                ConvertResponse(
+                    original=result.original if hasattr(result, "original") else item.code,
+                    converted=result.converted,
+                    success=getattr(result, "success", True),
+                    method=getattr(result, "method", "deterministic"),
+                    warnings=getattr(result, "warnings", []),
+                    errors=getattr(result, "errors", []),
+                )
+            )
+
+        return {"results": results}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":
