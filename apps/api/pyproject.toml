@@ -26,7 +26,7 @@ dependencies = [
     "pgvector>=0.2.4",
     "numpy>=1.24.0",
     "python-jose[cryptography]>=3.3.0",
-    "passlib[bcrypt]>=1.7.4",
+    "bcrypt>=4.0.0",
     "stripe>=7.0.0",
     "resend>=0.7.0",
 ]
@@ -72,6 +72,10 @@ ignore = ["E402", "E702", "E712", "E722", "E731", "F841"]
 [tool.ruff.lint.per-file-ignores]
 # Tests can use star imports + unused params/fixtures freely.
 "tests/**/*.py" = ["F401", "F403"]
+# Vendored ANTLR base classes use `from antlr4 import *` upstream.
+"src/source/oracle/grammar/PlSql*Base.py" = ["F401", "F403", "F405"]
+# Generated ANTLR parser code (when present) is not for human consumption.
+"src/source/oracle/_generated/**/*.py" = ["F401", "F403", "F405", "E501", "E741"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

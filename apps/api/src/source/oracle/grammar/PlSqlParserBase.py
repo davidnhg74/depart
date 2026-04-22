@@ -1,5 +1,6 @@
 from antlr4 import *
 
+
 class PlSqlParserBase(Parser):
 
     _isVersion10 = False
@@ -26,20 +27,39 @@ class PlSqlParserBase(Parser):
 
     def IsNotNumericFunction(self):
         from PlSqlLexer import PlSqlLexer as _Lexer
+
         lt1 = self._input.LT(1)
         lt2 = self._input.LT(2)
-        if (lt1.type in (_Lexer.SUM, _Lexer.COUNT, _Lexer.AVG,
-                         _Lexer.MIN, _Lexer.MAX, _Lexer.ROUND,
-                         _Lexer.LEAST, _Lexer.GREATEST) and
-                lt2.type == _Lexer.LEFT_PAREN):
+        if (
+            lt1.type
+            in (
+                _Lexer.SUM,
+                _Lexer.COUNT,
+                _Lexer.AVG,
+                _Lexer.MIN,
+                _Lexer.MAX,
+                _Lexer.ROUND,
+                _Lexer.LEAST,
+                _Lexer.GREATEST,
+            )
+            and lt2.type == _Lexer.LEFT_PAREN
+        ):
             return False
         return True
 
     def isNotStartOfJoin(self):
         from PlSqlLexer import PlSqlLexer as _Lexer
+
         lt1 = self._input.LT(1)
-        if (lt1.type in (_Lexer.INNER, _Lexer.CROSS, _Lexer.NATURAL,
-                         _Lexer.PARTITION, _Lexer.FULL, _Lexer.LEFT,
-                         _Lexer.RIGHT, _Lexer.OUTER)):
+        if lt1.type in (
+            _Lexer.INNER,
+            _Lexer.CROSS,
+            _Lexer.NATURAL,
+            _Lexer.PARTITION,
+            _Lexer.FULL,
+            _Lexer.LEFT,
+            _Lexer.RIGHT,
+            _Lexer.OUTER,
+        ):
             return False
         return True

@@ -1,5 +1,6 @@
 """FastAPI dependencies for authentication."""
 
+import uuid
 from typing import Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer
@@ -7,6 +8,17 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..models import User
 from .jwt import decode_token, verify_token_type
+
+
+def _coerce_user_id(value: str) -> Optional[uuid.UUID]:
+    """JWT carries the user id as a string; ORM `UUID(as_uuid=True)`
+    columns expect a uuid.UUID. Returns None on malformed input so
+    callers raise 401 instead of 500."""
+    try:
+        return uuid.UUID(value)
+    except (ValueError, TypeError):
+        return None
+
 
 security = HTTPBearer()
 security_optional = HTTPBearer(auto_error=False)
@@ -31,11 +43,11 @@ async def get_current_user(credentials=Depends(security), db: Session = Depends(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    user_id = payload.get("sub")
-    if not user_id:
+    user_id = _coerce_user_id(payload.get("sub", ""))
+    if user_id is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token missing user ID",
+            detail="Token missing or malformed user ID",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -69,9 +81,9 @@ async def get_optional_user(
     if not payload or not verify_token_type(payload, "access"):
         return None
 
-    user_id = payload.get("sub")
-    if not user_id:
+    user_id = _coerce_user_id(payload.get("sub", ""))
+    if user_id is None:
         return None
 
-    user = db.query(User).filter(User.id == user_id, User.is_active == True).first()
+    user = db.query(User).filter(User.id == user_id, User.is_active.is_(True)).first()
     return user

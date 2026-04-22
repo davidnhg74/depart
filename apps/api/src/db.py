@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from sqlalchemy import create_engine, Engine
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 from contextlib import contextmanager
