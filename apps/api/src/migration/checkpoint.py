@@ -194,3 +194,66 @@ class CheckpointManager:
                 for c in checkpoints
             ],
         }
+
+    def get_failed_tables(self, migration_id: str) -> list:
+        """Get list of failed tables for retry."""
+        from ..models import MigrationCheckpointRecord
+
+        checkpoints = (
+            self.db.query(MigrationCheckpointRecord)
+            .filter(
+                MigrationCheckpointRecord.migration_id
+                == uuid.UUID(migration_id) if isinstance(migration_id, str) else migration_id,
+                MigrationCheckpointRecord.status == "failed",
+            )
+            .all()
+        )
+
+        return [
+            {
+                "table_name": c.table_name,
+                "error_message": c.error_message,
+                "rows_processed": c.rows_processed,
+                "last_rowid": c.last_rowid,
+            }
+            for c in checkpoints
+        ]
+
+    def retry_failed_tables(self, migration_id: str) -> int:
+        """Reset failed tables for retry. Returns count of reset tables."""
+        from ..models import MigrationCheckpointRecord
+
+        failed_checkpoints = (
+            self.db.query(MigrationCheckpointRecord)
+            .filter(
+                MigrationCheckpointRecord.migration_id
+                == uuid.UUID(migration_id) if isinstance(migration_id, str) else migration_id,
+                MigrationCheckpointRecord.status == "failed",
+            )
+            .all()
+        )
+
+        count = 0
+        for checkpoint in failed_checkpoints:
+            checkpoint.status = "in_progress"
+            checkpoint.error_message = None
+            checkpoint.updated_at = datetime.utcnow()
+            count += 1
+
+        self.db.commit()
+        logger.info(f"Reset {count} failed tables for migration {migration_id}")
+        return count
+
+    def mark_table_failed(self, migration_id: str, table_name: str, error_message: str) -> None:
+        """Mark a table as failed with error message."""
+        from ..models import MigrationCheckpointRecord
+
+        # Get latest checkpoint
+        checkpoint = self.get_latest_checkpoint(migration_id, table_name)
+
+        if checkpoint:
+            checkpoint.status = "failed"
+            checkpoint.error_message = error_message
+            checkpoint.updated_at = datetime.utcnow()
+            self.db.commit()
+            logger.error(f"Table {table_name} marked as failed: {error_message}")
