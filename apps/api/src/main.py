@@ -23,6 +23,7 @@ from .migrations import setup_rag_tables
 from .migration import DataMigrator, CheckpointManager
 from .migration.tasks import get_migration_manager
 from .connectors import ConnectionConfig, get_connection_manager
+from .cost_calculator import CostCalculator, DatabaseSize, DeploymentType
 
 app = FastAPI(title="Depart API", version="0.2.0")
 
@@ -437,6 +438,53 @@ async def list_connections() -> dict:
         connections = manager.list_connections()
         return {"connections": connections}
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# Cost Savings Calculator
+# ============================================================================
+
+class CostAnalysisRequest(BaseModel):
+    database_size: str  # "small", "medium", "large", "enterprise"
+    deployment_type: str  # "onprem", "cloud_aws", "cloud_azure", "cloud_gcp"
+    num_databases: int = 1
+    num_oracle_cores: int = 4
+    num_dba_fte: float = 1.0
+
+
+@app.post("/api/v3/cost-analysis")
+async def analyze_migration_costs(request: CostAnalysisRequest) -> dict:
+    """
+    Calculate cost savings for Oracle → PostgreSQL migration.
+    Shows ROI, payback period, and 5-year savings.
+    """
+    try:
+        calculator = CostCalculator(
+            database_size=DatabaseSize(request.database_size),
+            deployment_type=DeploymentType(request.deployment_type),
+            num_databases=request.num_databases,
+            num_oracle_cores=request.num_oracle_cores,
+            num_dba_fte=request.num_dba_fte,
+        )
+
+        analysis = calculator.analyze()
+
+        return {
+            "status": "success",
+            "analysis": analysis.dict(),
+            "summary": {
+                "annual_savings_year1": f"${analysis.annual_savings_year1:,.0f}",
+                "annual_savings_year2_plus": f"${analysis.annual_savings_year2_plus:,.0f}",
+                "payback_months": f"{analysis.payback_months:.1f}",
+                "roi_percent": f"{analysis.roi_percent:.0f}%",
+                "five_year_savings": f"${analysis.five_year_savings:,.0f}",
+            },
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid parameter: {e}")
+    except Exception as e:
+        logger.error(f"Cost analysis error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
