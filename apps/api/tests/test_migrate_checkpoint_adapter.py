@@ -14,6 +14,7 @@ from src.migrate.checkpoint_adapter import (
     decode_last_pk,
     encode_last_pk,
     make_checkpoint_callback,
+    make_resume_callback,
     resume_pk,
 )
 from src.migrate.planner import TableRef
@@ -112,3 +113,15 @@ def test_composite_pk_round_trips_through_db(session, migration_id):
 
     callback(table, (7, 3), 1)
     assert resume_pk(manager, migration_id, table) == (7, 3)
+
+
+def test_make_resume_callback_returns_latest(session, migration_id):
+    manager = CheckpointManager(session)
+    write = make_checkpoint_callback(manager, migration_id)
+    read = make_resume_callback(manager, migration_id)
+    table = TableRef(schema="public", name="events")
+
+    assert read(table) is None  # no checkpoint yet
+    write(table, (100,), 100)
+    write(table, (250,), 250)
+    assert read(table) == (250,)

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 from typing import List
 from .embeddings import EmbeddingGenerator
+from ..utils.time import utc_now
 
 
 class ConversionCase:
@@ -27,8 +28,8 @@ class ConversionCase:
         self.embedding = embedding
         self.success_count = success_count
         self.fail_count = fail_count
-        self.created_at = datetime.utcnow()
-        self.updated_at = datetime.utcnow()
+        self.created_at = utc_now()
+        self.updated_at = utc_now()
 
     @property
     def success_rate(self) -> float:
@@ -140,7 +141,7 @@ class ConversionCaseStore:
                 case.success_count += 1
             else:
                 case.fail_count += 1
-            case.updated_at = datetime.utcnow()
+            case.updated_at = utc_now()
             self.db.commit()
 
     def get_pattern_stats(self, construct_type: str) -> dict:

@@ -1,6 +1,7 @@
 """Tests for /api/v3/projects/runbook."""
 
 import io
+import time
 import zipfile
 from pathlib import Path
 from unittest.mock import patch
@@ -8,7 +9,14 @@ from unittest.mock import patch
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from jose import jwt
 from pypdf import PdfReader
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+from src.config import settings as env_settings
+from src.models import InstanceSettings
+from src.services.settings_service import set_license_jwt
 
 
 def _pdf_text(pdf_bytes: bytes) -> str:
@@ -17,6 +25,7 @@ def _pdf_text(pdf_bytes: bytes) -> str:
 
 
 FIXTURES = Path(__file__).parent / "fixtures" / "app_impact"
+_DEV_KEY = Path.home() / ".depart-keys" / "license_private_dev.pem"
 
 
 @pytest.fixture
@@ -26,6 +35,46 @@ def client():
     app = FastAPI()
     app.include_router(router)
     return TestClient(app)
+
+
+@pytest.fixture
+def reset_license():
+    """Strip any prior license so each test controls the gate explicitly."""
+    engine = create_engine(env_settings.database_url)
+    S = sessionmaker(bind=engine)
+    s = S()
+    s.query(InstanceSettings).delete()
+    s.commit()
+    s.close()
+    engine.dispose()
+    yield
+
+
+@pytest.fixture
+def pro_license(reset_license):
+    """Seed a valid Pro license so PDF generation is authorized."""
+    if not _DEV_KEY.exists():
+        pytest.skip(f"dev signing key missing at {_DEV_KEY}")
+    now = int(time.time())
+    token = jwt.encode(
+        {
+            "sub": "tests@depart",
+            "project": "runbook-tests",
+            "tier": "pro",
+            "features": ["ai_conversion", "runbook_pdf"],
+            "iat": now,
+            "exp": now + 3600,
+        },
+        _DEV_KEY.read_text(),
+        algorithm="RS256",
+    )
+    engine = create_engine(env_settings.database_url)
+    S = sessionmaker(bind=engine)
+    s = S()
+    set_license_jwt(s, token)
+    s.close()
+    engine.dispose()
+    yield
 
 
 def _zip_dir(path: Path) -> bytes:
@@ -41,7 +90,7 @@ def _zip_dir(path: Path) -> bytes:
 
 
 class TestPdfResponse:
-    def test_returns_pdf_with_attachment(self, client):
+    def test_returns_pdf_with_attachment(self, client, pro_license):
         resp = client.post(
             "/api/v3/projects/runbook",
             files={
@@ -60,7 +109,7 @@ class TestPdfResponse:
         text = _pdf_text(resp.content)
         assert "ACME Corp" in text
 
-    def test_includes_app_impact_in_pdf_when_source_provided(self, client):
+    def test_includes_app_impact_in_pdf_when_source_provided(self, client, pro_license):
         resp = client.post(
             "/api/v3/projects/runbook",
             files={
@@ -77,6 +126,28 @@ class TestPdfResponse:
         text = _pdf_text(resp.content)
         # The fixture has CRITICAL findings that show up under "Cutover Blockers".
         assert "DBLINK" in text or "DBMS_OUTPUT" in text
+
+    def test_pdf_without_license_returns_402(self, client, reset_license):
+        """Community-tier install hits the runbook PDF endpoint — the
+        license gate must return 402 with the upgrade_url pointing at
+        /settings/instance, and the error body must suggest the JSON
+        fallback so Community users can still inspect the runbook."""
+        resp = client.post(
+            "/api/v3/projects/runbook",
+            files={
+                "schema_zip": ("s.zip", _zip_dir(FIXTURES / "schema"), "application/zip"),
+            },
+            data={
+                "project_name": "ACME",
+                "customer": "ACME Corp",
+                "format": "pdf",
+            },
+        )
+        assert resp.status_code == 402
+        detail = resp.json()["detail"]
+        assert detail["feature"] == "runbook_pdf"
+        assert detail["upgrade_url"] == "/settings/instance"
+        assert "json" in detail["fallback"].lower()
 
 
 # ─── JSON format ─────────────────────────────────────────────────────────────
@@ -206,7 +277,7 @@ class TestErrors:
         )
         assert resp.status_code == 400
 
-    def test_empty_schema(self, client):
+    def test_empty_schema(self, client, pro_license):
         resp = client.post(
             "/api/v3/projects/runbook",
             files={"schema_zip": ("s.zip", b"", "application/zip")},
@@ -214,7 +285,7 @@ class TestErrors:
         )
         assert resp.status_code == 400
 
-    def test_schema_with_no_sql_files(self, client):
+    def test_schema_with_no_sql_files(self, client, pro_license):
         # Zip contains a .txt file but no .sql files — must 400.
         import io
         import zipfile

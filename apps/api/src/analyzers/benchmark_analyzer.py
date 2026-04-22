@@ -9,6 +9,8 @@ from datetime import datetime
 import logging
 import re
 
+from ..utils.time import utc_now
+
 logger = logging.getLogger(__name__)
 
 
@@ -153,7 +155,7 @@ class BenchmarkCapture:
             session.close()
 
         return OracleBaseline(
-            captured_at=datetime.utcnow().isoformat(),
+            captured_at=utc_now().isoformat(),
             top_queries=top_queries,
             table_stats=table_stats,
             migration_id=migration_id,
@@ -238,7 +240,7 @@ class BenchmarkCapture:
             session.close()
 
         return PostgresMetrics(
-            captured_at=datetime.utcnow().isoformat(),
+            captured_at=utc_now().isoformat(),
             top_queries=top_queries,
             table_stats=table_stats,
             migration_id=migration_id,
@@ -389,5 +391,5 @@ class BenchmarkComparator:
             query_comparisons=query_comparisons,
             table_comparisons=table_comparisons,
             overall_assessment=overall_assessment,
-            generated_at=datetime.utcnow().isoformat(),
+            generated_at=utc_now().isoformat(),
         )

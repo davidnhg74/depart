@@ -7,6 +7,7 @@ import pytest
 from datetime import datetime, timedelta
 from unittest.mock import Mock
 
+from src.utils.time import utc_now
 from src.connectors.connection_pool import (
     ConnectionPool,
     ConnectionStats,
@@ -26,12 +27,12 @@ class TestConnectionStats:
             database_type="oracle",
             host="oracle.company.com",
             port=1521,
-            created_at=datetime.utcnow(),
-            last_used=datetime.utcnow(),
+            created_at=utc_now(),
+            last_used=utc_now(),
             use_count=42,
             active_queries=3,
             health_status="healthy",
-            last_health_check=datetime.utcnow(),
+            last_health_check=utc_now(),
             response_time_ms=45.5,
         )
 
@@ -158,12 +159,12 @@ class TestConnectionPool:
             database_type="oracle",
             host="test",
             port=1521,
-            created_at=datetime.utcnow(),
-            last_used=datetime.utcnow() - timedelta(seconds=400),  # 400 seconds ago
+            created_at=utc_now(),
+            last_used=utc_now() - timedelta(seconds=400),  # 400 seconds ago
             use_count=1,
             active_queries=0,
             health_status="healthy",
-            last_health_check=datetime.utcnow(),
+            last_health_check=utc_now(),
             response_time_ms=10.0,
         )
         pool.stats["oracle-1"] = stats
@@ -214,7 +215,7 @@ class TestCachedConnectionStats:
 
         cache.set("oracle-1", stats)
         # Manually set old timestamp
-        cache.cache_time["oracle-1"] = datetime.utcnow() - timedelta(seconds=70)
+        cache.cache_time["oracle-1"] = utc_now() - timedelta(seconds=70)
 
         retrieved = cache.get("oracle-1")
 

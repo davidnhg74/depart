@@ -1,3 +1,18 @@
+import os
+
+# Enable cloud routes for the test suite BEFORE any test imports
+# `src.main`. Many existing tests (auth flow, billing, support) hit
+# these endpoints; the product default is False but tests need the
+# full surface mounted to assert behavior.
+os.environ.setdefault("ENABLE_CLOUD_ROUTES", "true")
+
+# Disable self-hosted auth by default for tests — the hundreds of
+# existing tests don't authenticate, and adding Authorization headers
+# everywhere would be enormous churn. A small, dedicated test file
+# (`test_auth_local.py`) flips this back on at runtime to exercise the
+# auth layer explicitly.
+os.environ.setdefault("ENABLE_SELF_HOSTED_AUTH", "false")
+
 import pytest
 from pathlib import Path
 

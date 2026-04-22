@@ -2,13 +2,21 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+export type UserRole = 'admin' | 'operator' | 'viewer';
+
+
 export interface User {
   id: string;
   email: string;
   full_name: string;
-  plan: 'trial' | 'starter' | 'professional' | 'enterprise';
-  email_verified: boolean;
-  created_at: string;
+  // Self-hosted auth returns role + is_active; cloud auth leaves them
+  // optional. Keeping the type one for both so the auth store works in
+  // either build.
+  role?: UserRole;
+  is_active?: boolean;
+  plan?: 'trial' | 'starter' | 'professional' | 'enterprise';
+  email_verified?: boolean;
+  created_at?: string;
   databases_used?: number;
   migrations_used_this_month?: number;
   llm_conversions_this_month?: number;

@@ -60,3 +60,14 @@ apps/api/src/source/oracle/_generated/
 
 # Grammar codegen jar cache
 .cache/depart-grammar/
+
+# License signing private keys — must never be committed.
+# Dev keys live at ~/.depart-keys/. Production keys are managed
+# out-of-band. The public key at apps/api/src/license/public_key.pem
+# is the verification key and ships with the product image.
+*_private*.pem
+license_private*.pem
+
+# Air-gap bundle build output — large tarballs with docker images.
+/dist/
+depart-airgap-*.tar.gz

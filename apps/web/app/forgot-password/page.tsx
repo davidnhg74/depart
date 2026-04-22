@@ -3,8 +3,15 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { forgotPassword } from '@/app/lib/api';
+import CloudOnlyNotice from '@/app/components/CloudOnlyNotice';
+import { cloudRoutesEnabled } from '@/app/lib/cloudRoutes';
 
 export default function ForgotPasswordPage() {
+  if (!cloudRoutesEnabled()) return <CloudOnlyNotice page="Password reset" />;
+  return <ForgotPasswordContent />;
+}
+
+function ForgotPasswordContent() {
   const [email, setEmail] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');

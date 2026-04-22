@@ -13,7 +13,7 @@ export interface Limits {
   llm_per_month: number | null;
 }
 
-export const PLAN_LIMITS: Record<User['plan'], Limits> = {
+export const PLAN_LIMITS: Record<NonNullable<User['plan']>, Limits> = {
   trial: {
     databases: 1,
     migrations_per_month: 3,

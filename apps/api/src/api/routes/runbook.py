@@ -22,12 +22,17 @@ import zipfile
 from pathlib import Path
 from typing import List, Optional
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import Response
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from ...analyze.app_impact import AppImpactAnalyzer
 from ...analyze.complexity import analyze as analyze_complexity
+from ...auth.roles import require_role
+from ...db import get_db
+from ...license.verifier import get_license_status
+from ...services.audit import log_event
 from ...source.oracle.parser import parse as parse_oracle
 from ...projects.pdf import render as render_pdf
 from ...projects.runbook import RunbookContext, assemble
@@ -95,9 +100,34 @@ async def generate_runbook(
     rate_per_day: int = Form(default=1500),
     explain: bool = Form(default=False),
     format: str = Form(default="pdf"),
+    request: Request = None,
+    db: Session = Depends(get_db),
+    caller=Depends(require_role("admin", "operator")),
 ):
     if format not in ("pdf", "json"):
         raise HTTPException(400, "format must be 'pdf' or 'json'")
+
+    # License gate: the polished PDF is a Pro feature. The raw JSON
+    # structure is still available to Community tier as a "try before
+    # you buy" — operators can inspect the runbook contents, they just
+    # can't get the CTO-ready PDF without a license.
+    if format == "pdf":
+        license_status = get_license_status(db)
+        if not license_status.has_feature("runbook_pdf"):
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail={
+                    "error": "feature_not_licensed" if license_status.valid else "license_required",
+                    "feature": "runbook_pdf",
+                    "reason": (
+                        f"license tier {license_status.tier.value!r} does not include 'runbook_pdf'"
+                        if license_status.valid
+                        else license_status.reason or "no valid license"
+                    ),
+                    "fallback": "use format=json to get the structured runbook without the PDF",
+                    "upgrade_url": "/settings/instance",
+                },
+            )
 
     with tempfile.TemporaryDirectory(prefix="depart_runbook_") as tmpdir:
         tmp = Path(tmpdir)
@@ -142,6 +172,21 @@ async def generate_runbook(
                 runbook = assemble(ctx)
         else:
             runbook = assemble(ctx)
+
+    log_event(
+        db,
+        request=request,
+        user=caller,
+        action="runbook.generated",
+        resource_type="runbook",
+        details={
+            "project_name": project_name,
+            "customer": customer,
+            "format": format,
+            "explain": bool(explain),
+            "has_source_zip": source_zip is not None,
+        },
+    )
 
     if format == "pdf":
         pdf_bytes = render_pdf(runbook)

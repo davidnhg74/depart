@@ -8,7 +8,7 @@ interface UsageMeterProps {
 }
 
 export default function UsageMeter({ user }: UsageMeterProps) {
-  const limits = PLAN_LIMITS[user.plan];
+  const limits = PLAN_LIMITS[user.plan ?? 'trial'];
   const databasesPercent = limits.databases ? ((user.databases_used ?? 0) / limits.databases) * 100 : 0;
   const migrationsPercent = limits.migrations_per_month ? ((user.migrations_used_this_month ?? 0) / limits.migrations_per_month) * 100 : 0;
   const llmPercent = limits.llm_per_month ? ((user.llm_conversions_this_month ?? 0) / limits.llm_per_month) * 100 : 0;

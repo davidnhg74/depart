@@ -4,7 +4,8 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuthStore } from '@/app/store/authStore';
-import { logout } from '@/app/lib/api';
+import { logout, logoutLocal } from '@/app/lib/api';
+import { cloudRoutesEnabled } from '@/app/lib/cloudRoutes';
 
 export default function Navigation() {
   const pathname = usePathname();
@@ -12,24 +13,87 @@ export default function Navigation() {
   const router = useRouter();
   const { user, isAuthenticated } = useAuthStore();
 
+  const cloudEnabled = cloudRoutesEnabled();
+
+  const isAdmin = user?.role === 'admin';
+
+  // Navigation differs between cloud and self-hosted builds:
+  //  * Cloud: signed-out users see marketing + Login/Sign up; signed-in
+  //    users see app pages behind auth.
+  //  * Self-hosted: signed-out shows Download + Demo + Log-in CTA;
+  //    signed-in surfaces the product pages. Admin-only pages
+  //    (Users) are filtered out for non-admins.
+  const selfHostedAnon = [
+    { href: '/download', label: 'Download', active: pathname === '/download' },
+    { href: '/assess', label: 'Demo', active: pathname === '/assess' },
+  ];
+  const selfHostedAuthed = [
+    { href: '/assess', label: 'Assess', active: pathname === '/assess' },
+    {
+      href: '/migrations',
+      label: 'Migrations',
+      active: pathname.startsWith('/migrations'),
+    },
+    { href: '/runbook', label: 'Runbook', active: pathname === '/runbook' },
+    {
+      href: '/settings/instance',
+      label: 'Settings',
+      active: pathname === '/settings/instance',
+    },
+    ...(isAdmin
+      ? [
+          {
+            href: '/settings/users',
+            label: 'Users',
+            active: pathname === '/settings/users',
+          },
+          {
+            href: '/settings/sso',
+            label: 'SSO',
+            active: pathname === '/settings/sso',
+          },
+        ]
+      : []),
+    ...(user?.role === 'admin' || user?.role === 'viewer'
+      ? [
+          {
+            href: '/settings/audit',
+            label: 'Audit',
+            active: pathname === '/settings/audit',
+          },
+        ]
+      : []),
+  ];
   const publicLinks = [
-    { href: '/features', label: 'Features', active: pathname === '/features' },
+    { href: '/download', label: 'Download', active: pathname === '/download' },
+    { href: '/assess', label: 'Demo', active: pathname === '/assess' },
     { href: '/pricing', label: 'Pricing', active: pathname === '/pricing' },
     { href: '/contact', label: 'Contact', active: pathname === '/contact' },
   ];
-
   const appLinks = [
     { href: '/analyzer', label: 'Analyzer', active: pathname === '/analyzer' },
     { href: '/app-impact', label: 'App Impact', active: pathname === '/app-impact' },
     { href: '/migration', label: 'Migration', active: pathname === '/migration' },
   ];
 
-  const links = isAuthenticated ? appLinks : publicLinks;
+  const links = !cloudEnabled
+    ? isAuthenticated
+      ? selfHostedAuthed
+      : selfHostedAnon
+    : isAuthenticated
+    ? appLinks
+    : publicLinks;
 
   const handleLogout = async () => {
-    await logout();
+    // Self-hosted builds hit /api/v1/auth/logout; cloud builds hit
+    // /api/v4/auth/logout. Both tear down the local session + cookies.
+    if (cloudEnabled) {
+      await logout();
+    } else {
+      await logoutLocal();
+    }
     setDropdownOpen(false);
-    router.push('/');
+    router.push('/login');
   };
 
   return (
@@ -54,7 +118,17 @@ export default function Navigation() {
               </Link>
             ))}
 
-            {isAuthenticated && user ? (
+            {!cloudEnabled && !isAuthenticated ? (
+              // Self-hosted, signed out: show a single Log in button
+              // so operators aren't stranded if they land on /download
+              // before authenticating.
+              <Link
+                href="/login"
+                className="px-4 py-2 bg-purple-600 text-white font-medium rounded-md hover:bg-purple-700"
+              >
+                Log in
+              </Link>
+            ) : isAuthenticated && user ? (
               <div className="relative">
                 <button
                   onClick={() => setDropdownOpen(!dropdownOpen)}

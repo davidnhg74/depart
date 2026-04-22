@@ -2,8 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import AuthGuard from '@/app/components/AuthGuard';
+import CloudOnlyNotice from '@/app/components/CloudOnlyNotice';
 import { useAuthStore } from '@/app/store/authStore';
 import { api } from '@/app/lib/api';
+import { cloudRoutesEnabled } from '@/app/lib/cloudRoutes';
 import { PLAN_LIMITS } from '@/app/lib/planLimits';
 
 function BillingContent() {
@@ -43,8 +45,8 @@ function BillingContent() {
     }
   };
 
-  const currentPlan = user?.plan || 'trial';
-  const limits = PLAN_LIMITS[currentPlan as keyof typeof PLAN_LIMITS];
+  const currentPlan = (user?.plan ?? 'trial') as keyof typeof PLAN_LIMITS;
+  const limits = PLAN_LIMITS[currentPlan];
 
   return (
     <div className="max-w-4xl mx-auto py-8">
@@ -174,6 +176,7 @@ function BillingContent() {
 }
 
 export default function BillingPage() {
+  if (!cloudRoutesEnabled()) return <CloudOnlyNotice page="Billing" />;
   return (
     <AuthGuard>
       <BillingContent />

@@ -8,6 +8,7 @@ import json
 from datetime import datetime
 from unittest.mock import Mock
 
+from src.utils.time import utc_now
 from src.analyzers.permission_analyzer import (
     OraclePrivilegeExtractor,
     PermissionMapper,
@@ -308,7 +309,7 @@ class TestPermissionDataclasses:
             unmappable=[],
             grant_sql=["GRANT SELECT ON TABLE t1 TO user;"],
             overall_risk="LOW",
-            analyzed_at=datetime.utcnow().isoformat(),
+            analyzed_at=utc_now().isoformat(),
         )
 
         assert isinstance(result.mappings, list)

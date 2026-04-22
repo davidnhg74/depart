@@ -27,7 +27,7 @@ The target side uses raw psycopg for COPY.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Callable, Dict, Iterable, Iterator, List, Sequence
+from typing import Callable, Dict, Iterable, Iterator, List, Optional, Sequence
 
 from sqlalchemy import text
 
@@ -113,6 +113,18 @@ def _noop_checkpoint(table: TableRef, last_pk: tuple | None, rows: int) -> None:
     pass
 
 
+ResumeFn = Callable[[TableRef], Optional[tuple]]
+"""Called at the start of each table copy to ask: "is there already a
+checkpoint for this table from a prior run?" Returns the last PK that
+was successfully loaded, or None to start from the beginning. The
+runner seeds its keyset walk with this PK so already-copied rows are
+skipped."""
+
+
+def _noop_resume(table: TableRef) -> Optional[tuple]:
+    return None
+
+
 # ─── Runner ──────────────────────────────────────────────────────────────────
 
 
@@ -132,6 +144,7 @@ class Runner:
     source_dialect: Dialect
     batch_size: int = 5000
     checkpoint: CheckpointFn = _noop_checkpoint
+    resume: ResumeFn = _noop_resume
 
     def execute(self, plan: LoadPlan, specs: Dict[str, TableSpec]) -> RunResult:
         """Run the entire plan. Returns a RunResult with per-table
@@ -155,8 +168,17 @@ class Runner:
 
     def _copy_table(self, spec: TableSpec) -> TableRunResult:
         rows_total = 0
-        last_pk: tuple | None = None
-        for batch in self._iter_batches(self.source_session, self.source_dialect, spec.source_table, spec):
+        # If a prior run checkpointed a PK for this target, skip ahead.
+        # The verification passes below intentionally do NOT resume —
+        # they read the whole table on both sides to hash-compare.
+        last_pk: tuple | None = self.resume(spec.target_table)
+        for batch in self._iter_batches(
+            self.source_session,
+            self.source_dialect,
+            spec.source_table,
+            spec,
+            start_after_pk=last_pk,
+        ):
             cp: CopyResult = copy_rows_to_postgres(
                 pg_conn=self.target_pg_conn,
                 table=spec.target_table.qualified(),
@@ -187,10 +209,21 @@ class Runner:
         )
 
     def _iter_batches(
-        self, session, dialect: Dialect, table: TableRef, spec: TableSpec
+        self,
+        session,
+        dialect: Dialect,
+        table: TableRef,
+        spec: TableSpec,
+        start_after_pk: tuple | None = None,
     ) -> Iterator[List[Sequence]]:
         yield from _stream_batches(
-            session, dialect, table, spec.columns, spec.pk_columns, self.batch_size
+            session,
+            dialect,
+            table,
+            spec.columns,
+            spec.pk_columns,
+            self.batch_size,
+            start_after_pk=start_after_pk,
         )
 
     # ─── group-level constraint deferral ────────────────────────────────────
@@ -237,13 +270,18 @@ def _stream_batches(
     columns: Sequence[str],
     pk_columns: Sequence[str],
     batch_size: int,
+    start_after_pk: tuple | None = None,
 ) -> Iterator[List[Sequence]]:
     """Yield batches of `batch_size` rows from `table` via keyset
     pagination. Stops when a page returns fewer rows than requested.
     Caller-supplied `columns` and `pk_columns` so the same helper works
-    for source-side reads and target-side verification reads."""
+    for source-side reads and target-side verification reads.
+
+    If `start_after_pk` is supplied, the first page is built as a
+    keyset-continuation (`WHERE pk > start_after_pk`), so resumed runs
+    skip rows already loaded by a prior attempt."""
     pk_indexes = [columns.index(c) for c in pk_columns]
-    last_pk: tuple | None = None
+    last_pk: tuple | None = start_after_pk
     while True:
         if last_pk is None:
             q = build_first_page(

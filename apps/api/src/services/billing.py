@@ -6,6 +6,7 @@ from typing import Optional, Dict, Any
 from ..config import settings
 from ..models import User, PlanEnum, Subscription
 from sqlalchemy.orm import Session
+from ..utils.time import utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -208,7 +209,7 @@ def handle_subscription_updated(event: Dict[str, Any], db: Session) -> bool:
             sub_record.current_period_end = datetime.fromtimestamp(
                 subscription["current_period_end"]
             )
-            sub_record.updated_at = datetime.utcnow()
+            sub_record.updated_at = utc_now()
 
         db.commit()
 
@@ -243,8 +244,8 @@ def handle_subscription_deleted(event: Dict[str, Any], db: Session) -> bool:
         )
         if sub_record:
             sub_record.status = "canceled"
-            sub_record.canceled_at = datetime.utcnow()
-            sub_record.updated_at = datetime.utcnow()
+            sub_record.canceled_at = utc_now()
+            sub_record.updated_at = utc_now()
 
         db.commit()
 

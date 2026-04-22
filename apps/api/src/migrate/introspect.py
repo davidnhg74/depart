@@ -24,6 +24,7 @@ from typing import List, Sequence, Tuple
 
 from sqlalchemy import text
 
+from .ddl import ColumnMeta
 from .keyset import Dialect
 from .planner import ForeignKey, TableRef
 from .runner import TableSpec
@@ -44,6 +45,11 @@ class IntrospectedSchema:
     columns: dict  # qualified_name -> List[str], in ordinal order
     primary_keys: dict  # qualified_name -> List[str], in PK position order
     foreign_keys: List[ForeignKey]
+    # Optional: full column metadata (types, nullability, sizes) keyed on
+    # qualified name. Populated by the introspectors but left empty by
+    # hand-constructed test fixtures. DDL generation needs this; the
+    # data-movement runner does not.
+    column_metadata: dict = None  # qualified_name -> List[ColumnMeta]
 
     def build_specs(self, target_schema: str | None = None) -> dict[str, TableSpec]:
         """Convert per-table introspection data into a TableSpec map keyed
@@ -80,12 +86,14 @@ def introspect(session, dialect: Dialect, schema: str) -> IntrospectedSchema:
     """Run all four introspection queries and assemble the result."""
     if dialect == Dialect.ORACLE:
         tables = _oracle_tables(session, schema)
-        columns = {t.qualified(): _oracle_columns(session, schema, t.name) for t in tables}
+        col_meta = {t.qualified(): _oracle_column_meta(session, schema, t.name) for t in tables}
+        columns = {qn: [c.name for c in metas] for qn, metas in col_meta.items()}
         pks = {t.qualified(): _oracle_primary_keys(session, schema, t.name) for t in tables}
         fks = _oracle_foreign_keys(session, schema)
     elif dialect == Dialect.POSTGRES:
         tables = _pg_tables(session, schema)
-        columns = {t.qualified(): _pg_columns(session, schema, t.name) for t in tables}
+        col_meta = {t.qualified(): _pg_column_meta(session, schema, t.name) for t in tables}
+        columns = {qn: [c.name for c in metas] for qn, metas in col_meta.items()}
         pks = {t.qualified(): _pg_primary_keys(session, schema, t.name) for t in tables}
         fks = _pg_foreign_keys(session, schema)
     else:
@@ -98,6 +106,7 @@ def introspect(session, dialect: Dialect, schema: str) -> IntrospectedSchema:
         columns=columns,
         primary_keys=pks,
         foreign_keys=fks,
+        column_metadata=col_meta,
     )
 
 
@@ -113,7 +122,12 @@ _ORACLE_TABLES_SQL = """
 """
 
 _ORACLE_COLUMNS_SQL = """
-    SELECT column_name
+    SELECT column_name,
+           data_type,
+           nullable,
+           data_length,
+           data_precision,
+           data_scale
     FROM all_tab_columns
     WHERE owner = :owner AND table_name = :tbl
     ORDER BY column_id
@@ -152,11 +166,31 @@ def _oracle_tables(session, schema: str) -> List[TableRef]:
     return [TableRef(schema=schema, name=r[0]) for r in rows]
 
 
-def _oracle_columns(session, schema: str, table: str) -> List[str]:
+def _oracle_column_meta(session, schema: str, table: str) -> List[ColumnMeta]:
     rows = session.execute(
         text(_ORACLE_COLUMNS_SQL), {"owner": schema.upper(), "tbl": table.upper()}
     ).all()
-    return [r[0] for r in rows]
+    out: List[ColumnMeta] = []
+    for name, data_type, nullable, data_length, precision, scale in rows:
+        # VARCHAR2/CHAR/RAW report size in `data_length`; numeric types
+        # leave it as the full-NUMBER byte size (22), which isn't useful.
+        # Keep length only for string/binary types.
+        dtype = (data_type or "").upper()
+        length = data_length if dtype in _ORACLE_LENGTH_TYPES else None
+        out.append(
+            ColumnMeta(
+                name=name,
+                data_type=dtype,
+                nullable=(nullable == "Y"),
+                length=length,
+                precision=precision,
+                scale=scale,
+            )
+        )
+    return out
+
+
+_ORACLE_LENGTH_TYPES = {"VARCHAR2", "NVARCHAR2", "VARCHAR", "CHAR", "NCHAR", "RAW"}
 
 
 def _oracle_primary_keys(session, schema: str, table: str) -> List[str]:
@@ -192,7 +226,12 @@ _PG_TABLES_SQL = """
 """
 
 _PG_COLUMNS_SQL = """
-    SELECT column_name
+    SELECT column_name,
+           data_type,
+           is_nullable,
+           character_maximum_length,
+           numeric_precision,
+           numeric_scale
     FROM information_schema.columns
     WHERE table_schema = :schema AND table_name = :tbl
     ORDER BY ordinal_position
@@ -236,9 +275,25 @@ def _pg_tables(session, schema: str) -> List[TableRef]:
     return [TableRef(schema=schema, name=r[0]) for r in rows]
 
 
-def _pg_columns(session, schema: str, table: str) -> List[str]:
+def _pg_column_meta(session, schema: str, table: str) -> List[ColumnMeta]:
     rows = session.execute(text(_PG_COLUMNS_SQL), {"schema": schema, "tbl": table}).all()
-    return [r[0] for r in rows]
+    out: List[ColumnMeta] = []
+    for name, data_type, is_nullable, char_max_len, numeric_precision, numeric_scale in rows:
+        # information_schema reports numeric_precision for integer types
+        # too (bigint → 64). That's noisy when we round-trip through the
+        # PG mapper, so drop it for non-numeric types.
+        is_numeric = (data_type or "").lower() == "numeric"
+        out.append(
+            ColumnMeta(
+                name=name,
+                data_type=data_type,
+                nullable=(is_nullable == "YES"),
+                length=char_max_len,
+                precision=numeric_precision if is_numeric else None,
+                scale=numeric_scale if is_numeric else None,
+            )
+        )
+    return out
 
 
 def _pg_primary_keys(session, schema: str, table: str) -> List[str]:

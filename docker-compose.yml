@@ -20,14 +20,34 @@ services:
     networks:
       - depart_network
 
+  # Queue broker for the arq migration worker. Lightweight — one key
+  # per in-flight job plus a history list capped by arq. Sized for
+  # laptop use; raise maxmemory for production.
+  redis:
+    image: redis:7-alpine
+    container_name: depart_redis
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    networks:
+      - depart_network
+    restart: unless-stopped
+
   api:
     build:
       context: ./apps/api
       dockerfile: Dockerfile
     container_name: depart_api
-    environment:
+    environment: &api_env
       DATABASE_URL: postgresql+psycopg://depart_user:${DB_PASSWORD:-depart_secure_password}@postgres:5432/depart
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      # BYOK Anthropic key — optional. Can also be set at runtime from /settings/instance.
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Column encryption — optional but strongly recommended. Generate
+      # with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
+      DEPART_ENCRYPTION_KEY: ${DEPART_ENCRYPTION_KEY:-}
+      # Cloud routes (auth/billing/support) default OFF for the self-hosted product.
+      # depart.cloud (the marketing/purchase site) flips this to true.
+      ENABLE_CLOUD_ROUTES: ${ENABLE_CLOUD_ROUTES:-false}
+      # Remaining vars only matter when ENABLE_CLOUD_ROUTES=true.
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-in-production-super-secret-key}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
@@ -47,6 +67,23 @@ services:
       timeout: 3s
       retries: 5
       start_period: 30s
+    networks:
+      - depart_network
+    restart: unless-stopped
+
+  # arq worker — runs migrations out-of-process so an API restart
+  # doesn't lose an in-flight run. Shares the API image (same code)
+  # but boots the worker command instead of uvicorn.
+  worker:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: depart_worker
+    command: ["arq", "src.worker.WorkerSettings"]
+    environment: *api_env
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - depart_network
     restart: unless-stopped
@@ -81,6 +118,10 @@ services:
       - "1521:1521"
     volumes:
       - oracle_data:/opt/oracle/oradata
+      # Init scripts — applied once on first boot of a fresh volume.
+      # Creates the HR-style fixture schema used by the live
+      # introspector integration test.
+      - ./docker/oracle-init:/container-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD", "healthcheck.sh"]
       interval: 30s

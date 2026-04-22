@@ -7,6 +7,7 @@ import pytest
 from datetime import datetime
 from unittest.mock import Mock
 
+from src.utils.time import utc_now
 from src.analyzers.benchmark_analyzer import (
     BenchmarkCapture,
     BenchmarkComparator,
@@ -234,7 +235,7 @@ class TestBenchmarkComparator:
         comparator = BenchmarkComparator()
 
         oracle_baseline = OracleBaseline(
-            captured_at=datetime.utcnow().isoformat(),
+            captured_at=utc_now().isoformat(),
             top_queries=[
                 QueryStat(
                     sql_text="SELECT * FROM emp WHERE deptno = :1",
@@ -248,7 +249,7 @@ class TestBenchmarkComparator:
         )
 
         pg_metrics = PostgresMetrics(
-            captured_at=datetime.utcnow().isoformat(),
+            captured_at=utc_now().isoformat(),
             top_queries=[
                 QueryStat(
                     sql_text="SELECT * FROM emp WHERE deptno = $1",
@@ -278,7 +279,7 @@ class TestBenchmarkComparator:
         comparator = BenchmarkComparator()
 
         oracle_baseline = OracleBaseline(
-            captured_at=datetime.utcnow().isoformat(),
+            captured_at=utc_now().isoformat(),
             top_queries=[
                 QueryStat(
                     sql_text="SELECT * FROM emp",
@@ -292,7 +293,7 @@ class TestBenchmarkComparator:
         )
 
         pg_metrics = PostgresMetrics(
-            captured_at=datetime.utcnow().isoformat(),
+            captured_at=utc_now().isoformat(),
             top_queries=[
                 QueryStat(
                     sql_text="SELECT * FROM emp",
@@ -346,7 +347,7 @@ class TestBenchmarkReport:
                 }
             ],
             overall_assessment="PostgreSQL is 8% faster on average.",
-            generated_at=datetime.utcnow().isoformat(),
+            generated_at=utc_now().isoformat(),
         )
 
         assert report.migration_id == "test-123"

@@ -10,6 +10,7 @@ from ..db import get_db
 from ..models import User, SupportTicket, TicketMessage
 from ..auth.dependencies import get_current_user
 from ..services.email import send_contact_notification, send_ticket_notification
+from ..utils.time import utc_now
 
 router = APIRouter(prefix="/api/v4", tags=["support"])
 
@@ -242,7 +243,7 @@ async def add_ticket_message(
         body=request.body,
     )
 
-    ticket.updated_at = datetime.utcnow()
+    ticket.updated_at = utc_now()
     db.add(message)
     db.commit()
     db.refresh(message)
@@ -286,7 +287,7 @@ async def update_ticket_status(
         )
 
     ticket.status = new_status
-    ticket.updated_at = datetime.utcnow()
+    ticket.updated_at = utc_now()
     db.commit()
 
     return {"status": new_status}

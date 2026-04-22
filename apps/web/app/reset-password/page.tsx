@@ -4,8 +4,15 @@ import { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { resetPassword } from '@/app/lib/api';
+import CloudOnlyNotice from '@/app/components/CloudOnlyNotice';
+import { cloudRoutesEnabled } from '@/app/lib/cloudRoutes';
 
 export default function ResetPasswordPage() {
+  if (!cloudRoutesEnabled()) return <CloudOnlyNotice page="Password reset" />;
+  return <ResetPasswordContent />;
+}
+
+function ResetPasswordContent() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');

@@ -3,7 +3,9 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import AuthGuard from '@/app/components/AuthGuard';
+import CloudOnlyNotice from '@/app/components/CloudOnlyNotice';
 import { api } from '@/app/lib/api';
+import { cloudRoutesEnabled } from '@/app/lib/cloudRoutes';
 
 function SupportContent() {
   const [tickets, setTickets] = useState<any[]>([]);
@@ -192,6 +194,7 @@ function SupportContent() {
 }
 
 export default function SupportPage() {
+  if (!cloudRoutesEnabled()) return <CloudOnlyNotice page="Support" />;
   return (
     <AuthGuard>
       <SupportContent />

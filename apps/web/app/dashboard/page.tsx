@@ -3,8 +3,10 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import AuthGuard from '@/app/components/AuthGuard';
+import CloudOnlyNotice from '@/app/components/CloudOnlyNotice';
 import { useAuthStore } from '@/app/store/authStore';
 import { fetchCurrentUser } from '@/app/lib/api';
+import { cloudRoutesEnabled } from '@/app/lib/cloudRoutes';
 import TokenUsageCard from '@/app/dashboard/components/TokenUsageCard';
 
 function DashboardContent() {
@@ -107,6 +109,7 @@ function DashboardContent() {
 }
 
 export default function DashboardPage() {
+  if (!cloudRoutesEnabled()) return <CloudOnlyNotice page="Dashboard" />;
   return (
     <AuthGuard>
       <DashboardContent />

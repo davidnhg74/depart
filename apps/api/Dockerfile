@@ -11,6 +11,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         gcc \
         libpq5 \
         default-jre-headless \
+        # SAML stack: python3-saml's `xmlsec` native dep needs these.
+        # xmlsec1 for runtime; libxmlsec1-dev + pkg-config + libxml2-dev
+        # for the wheel build on platforms where no binary wheel exists.
+        libxmlsec1-openssl \
+        libxmlsec1-dev \
+        libxml2-dev \
+        pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml ./

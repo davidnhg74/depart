@@ -7,6 +7,8 @@ from typing import Any, Dict, Optional, List
 from datetime import datetime
 from pydantic import BaseModel
 
+from .time import utc_now
+
 
 class APIResponse(BaseModel):
     """Standard API response wrapper."""
@@ -21,7 +23,7 @@ class APIResponse(BaseModel):
     def __init__(self, **data):
         super().__init__(**data)
         if self.timestamp is None:
-            self.timestamp = datetime.utcnow().isoformat()
+            self.timestamp = utc_now().isoformat()
 
 
 class ErrorResponse(APIResponse):

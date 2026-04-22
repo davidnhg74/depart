@@ -14,6 +14,8 @@ from datetime import datetime, timedelta
 from unittest.mock import patch
 from uuid import uuid4
 
+from src.utils.time import utc_now
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -445,7 +447,7 @@ class TestResetPassword:
 
         # Force the token to be expired.
         user = db_session.query(User).filter(User.email == "exp@example.com").one()
-        user.reset_token_expires = datetime.utcnow() - timedelta(hours=1)
+        user.reset_token_expires = utc_now() - timedelta(hours=1)
         db_session.commit()
 
         resp = client.post(

@@ -18,6 +18,7 @@ from .models import Lead, AnalysisJob, JobStatus, User
 from .config import settings
 from .analyze.complexity import ComplexityScorer
 from .reports.pdf_generator import PDFReportGenerator
+from .utils.time import utc_now
 
 try:
     from .rag import ConversionCaseStore, EmbeddingGenerator
@@ -34,7 +35,22 @@ from .analyzers.benchmark_analyzer import BenchmarkComparator
 from .llm.client import LLMClient
 from .models import MigrationWorkflow, BenchmarkCapture as BenchmarkCaptureModel, MigrationReport
 from .connectors.connection_pool import get_connection_pool
-from .routers import auth, account, billing, support
+from .routers import (
+    assess,
+    audit as audit_router,
+    auth,
+    auth_local,
+    account,
+    billing,
+    cloud_analyze,
+    convert,
+    license as license_router,
+    migrations as migrations_router,
+    settings as settings_router,
+    setup as setup_router,
+    sso as sso_router,
+    support,
+)
 from .api.routes import app_impact as app_impact_route
 from .api.routes import runbook as runbook_route
 from .api.routes import usage as usage_route
@@ -42,6 +58,26 @@ from .auth.dependencies import get_optional_user
 from .services.billing import get_plan_limits
 
 app = FastAPI(title="Depart API", version="0.2.0")
+
+
+@app.on_event("startup")
+def _auto_bootstrap_admin() -> None:
+    """If DEPART_ADMIN_EMAIL / DEPART_ADMIN_PASSWORD are set and no
+    admin exists yet, create one. Silent no-op otherwise. Runs at
+    FastAPI startup, before the first request is served."""
+    if not settings.enable_self_hosted_auth:
+        return
+    try:
+        from .db import get_session_factory
+        from .routers.setup import maybe_bootstrap_from_env
+
+        session = get_session_factory()()
+        try:
+            maybe_bootstrap_from_env(session)
+        finally:
+            session.close()
+    except Exception as exc:  # noqa: BLE001 — startup mustn't crash the app
+        logger.warning("auto-bootstrap failed: %s", exc)
 
 # CORS middleware
 cors_origins = [settings.frontend_url]
@@ -181,181 +217,44 @@ async def health():
 
 
 # Register routers
-app.include_router(auth.router)
-app.include_router(account.router)
-app.include_router(billing.router)
-app.include_router(support.router)
+# Self-hosted-always routers — these are the product.
+app.include_router(assess.router)
+app.include_router(convert.router)
+app.include_router(settings_router.router)
+app.include_router(license_router.router)
+app.include_router(migrations_router.router)
+app.include_router(audit_router.router)
+
+# Setup + self-hosted auth always mount. The ENABLE_SELF_HOSTED_AUTH
+# flag doesn't gate the routes themselves — it controls whether
+# `require_role` enforces them on mutating endpoints. Login itself is
+# always available so dev boxes and test harnesses can still exercise
+# the auth code path even when enforcement is disabled.
+app.include_router(setup_router.router)
+app.include_router(auth_local.router)
+app.include_router(sso_router.router)
 app.include_router(app_impact_route.router)
 app.include_router(runbook_route.router)
 app.include_router(usage_route.router)
 
-
-@app.post("/api/v1/analyze")
-async def analyze(
-    file: UploadFile = File(...),
-    email: str = Form(...),
-    rate_per_day: int = Form(default=1000),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_optional_user),
-):
-    """
-    Upload a zip file of Oracle DDL/PL-SQL and get complexity analysis.
-    Email is used to gate access and store results (legacy).
-    Authenticated users are subject to plan limits.
-    """
-    try:
-        # Check plan limits if user is authenticated
-        if current_user:
-            limits = get_plan_limits(current_user.plan.value)
-
-            # Check migrations limit
-            if limits.get("migrations_per_month") is not None:
-                if current_user.migrations_used_this_month >= limits["migrations_per_month"]:
-                    raise HTTPException(
-                        status_code=status.HTTP_402_PAYMENT_REQUIRED,
-                        detail=f"Monthly migration limit reached ({limits['migrations_per_month']})",
-                        headers={"X-Upgrade-URL": f"{settings.frontend_url}/billing"},
-                    )
-
-        # Validate file size
-        file_content = await file.read()
-        file_size = len(file_content)
-
-        if file_size > settings.max_upload_size:
-            raise HTTPException(
-                status_code=400,
-                detail=f"File too large. Max size: {settings.max_upload_size} bytes",
-            )
-
-        # Get or create lead
-        lead = db.query(Lead).filter(Lead.email == email).first()
-        if not lead:
-            lead = Lead(email=email)
-            db.add(lead)
-            db.commit()
-            db.refresh(lead)
-
-        # Create job record
-        job = AnalysisJob(lead_id=lead.id, rate_per_day=rate_per_day, status=JobStatus.PROCESSING)
-        db.add(job)
-        db.commit()
-        db.refresh(job)
-
-        # Save uploaded file
-        file_path = UPLOADS_DIR / f"{job.id}.zip"
-        with open(file_path, "wb") as f:
-            f.write(file_content)
-
-        # Extract and analyze
-        try:
-            all_content = ""
-            with zipfile.ZipFile(file_path, "r") as zip_ref:
-                for file_info in zip_ref.filelist:
-                    if file_info.filename.endswith((".sql", ".pls", ".plsql", ".txt")):
-                        try:
-                            content = zip_ref.read(file_info).decode("utf-8", errors="ignore")
-                            all_content += content + "\n"
-                        except Exception:
-                            pass
-
-            # Run complexity analysis
-            scorer = ComplexityScorer()
-            report = scorer.analyze(all_content, rate_per_day)
-
-            # Generate PDF
-            pdf_generator = PDFReportGenerator()
-            pdf_content = pdf_generator.generate(report)
-
-            # Save PDF
-            pdf_path = UPLOADS_DIR / f"{job.id}_report.pdf"
-            with open(pdf_path, "wb") as f:
-                f.write(pdf_content)
-
-            # Update job with results
-            job.complexity_report = {
-                "score": report.score,
-                "total_lines": report.total_lines,
-                "auto_convertible_lines": report.auto_convertible_lines,
-                "needs_review_lines": report.needs_review_lines,
-                "must_rewrite_lines": report.must_rewrite_lines,
-                "construct_counts": report.construct_counts,
-                "effort_estimate_days": report.effort_estimate_days,
-                "estimated_cost": report.estimated_cost,
-                "top_10_constructs": report.top_10_constructs,
-            }
-            job.pdf_path = str(pdf_path)
-            job.status = JobStatus.DONE
-            job.completed_at = datetime.utcnow()
-
-            # Increment user's migration counter if authenticated
-            if current_user:
-                current_user.migrations_used_this_month += 1
-
-            db.commit()
-
-            return {
-                "job_id": str(job.id),
-                "status": job.status.value,
-                "complexity_report": job.complexity_report,
-            }
-
-        except zipfile.BadZipFile:
-            job.status = JobStatus.ERROR
-            job.error_message = "Invalid zip file"
-            db.commit()
-            raise HTTPException(status_code=400, detail="Invalid zip file")
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        job.status = JobStatus.ERROR
-        job.error_message = str(e)
-        db.commit()
-        raise HTTPException(status_code=500, detail=str(e))
+# Cloud-only routers — signup/login, billing, support tickets, per-user API
+# keys, and the legacy email-gated /api/v1/analyze zip-upload flow. The
+# self-hosted product image ships without these (no Stripe, no email
+# dependency, no user accounts, no Lead/Job persistence); depart.cloud
+# mounts them via the ENABLE_CLOUD_ROUTES env flag.
+if settings.enable_cloud_routes:
+    app.include_router(auth.router)
+    app.include_router(account.router)
+    app.include_router(billing.router)
+    app.include_router(support.router)
+    app.include_router(cloud_analyze.router)
 
 
-@app.get("/api/v1/jobs/{job_id}")
-async def get_job(job_id: str, db: Session = Depends(get_db)):
-    """Get job status and report."""
-    try:
-        job_uuid = uuid.UUID(job_id)
-        job = db.query(AnalysisJob).filter(AnalysisJob.id == job_uuid).first()
-
-        if not job:
-            raise HTTPException(status_code=404, detail="Job not found")
-
-        return {
-            "id": str(job.id),
-            "status": job.status.value,
-            "complexity_report": job.complexity_report,
-            "created_at": job.created_at.isoformat(),
-            "completed_at": job.completed_at.isoformat() if job.completed_at else None,
-        }
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid job ID format")
-
-
-@app.get("/api/v1/report/{job_id}/pdf")
-async def get_pdf_report(job_id: str, db: Session = Depends(get_db)):
-    """Download PDF report for a completed job."""
-    try:
-        job_uuid = uuid.UUID(job_id)
-        job = db.query(AnalysisJob).filter(AnalysisJob.id == job_uuid).first()
-
-        if not job:
-            raise HTTPException(status_code=404, detail="Job not found")
-
-        if job.status != JobStatus.DONE:
-            raise HTTPException(status_code=400, detail="Job not completed")
-
-        if not job.pdf_path or not os.path.exists(job.pdf_path):
-            raise HTTPException(status_code=404, detail="PDF report not found")
-
-        return FileResponse(
-            job.pdf_path, media_type="application/pdf", filename=f"depart_analysis_{job_id}.pdf"
-        )
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid job ID format")
+# The legacy `/api/v1/analyze`, `/api/v1/jobs/{id}`, and `/api/v1/report/{id}/pdf`
+# endpoints now live in `src/routers/cloud_analyze.py` and only mount when
+# ENABLE_CLOUD_ROUTES=true. The product image uses the newer `/api/v1/assess`
+# flow (no email, no Lead, no Job persistence). See that router for how the
+# three moved endpoints are re-mounted.
 
 
 # Conversion endpoints (/api/v2/convert/*) were removed. The previous
@@ -748,7 +647,7 @@ async def get_migration_report(migration_id: str, db: Session = Depends(get_db))
             conversion_percentage=conversion_percentage,
             risk_breakdown=risk_breakdown,
             blockers=blockers,
-            generated_at=datetime.utcnow().isoformat(),
+            generated_at=utc_now().isoformat(),
         )
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid migration ID format")
@@ -913,7 +812,7 @@ async def approve_workflow_step(
         approvals = workflow.approvals or {}
         approvals[str(step)] = {
             "approved_by": request.approved_by,
-            "approved_at": datetime.utcnow().isoformat(),
+            "approved_at": utc_now().isoformat(),
             "notes": request.notes or "",
         }
         workflow.approvals = approvals
@@ -922,7 +821,7 @@ async def approve_workflow_step(
         if workflow.current_step == step:
             workflow.current_step += 1
 
-        workflow.updated_at = datetime.utcnow()
+        workflow.updated_at = utc_now()
         db.commit()
         db.refresh(workflow)
 
@@ -969,12 +868,12 @@ async def reject_workflow_step(
         dba_notes = workflow.dba_notes or {}
         dba_notes[f"step_{step}_rejection"] = {
             "reason": request.reason,
-            "rejected_at": datetime.utcnow().isoformat(),
+            "rejected_at": utc_now().isoformat(),
             "notes": request.notes or "",
         }
         workflow.dba_notes = dba_notes
         workflow.status = "blocked"
-        workflow.updated_at = datetime.utcnow()
+        workflow.updated_at = utc_now()
 
         db.commit()
         db.refresh(workflow)
@@ -1018,7 +917,7 @@ async def update_workflow_settings(
             raise HTTPException(status_code=404, detail="Workflow not found")
 
         workflow.settings = request.settings
-        workflow.updated_at = datetime.utcnow()
+        workflow.updated_at = utc_now()
         db.commit()
         db.refresh(workflow)
 
@@ -1171,7 +1070,7 @@ async def check_connection_health(connection_id: str):
             "connection_id": connection_id,
             "status": health.get("status", "unknown"),
             "details": health,
-            "checked_at": datetime.utcnow().isoformat(),
+            "checked_at": utc_now().isoformat(),
         }
     except HTTPException:
         raise

@@ -1,9 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import AuthGuard from '@/app/components/AuthGuard';
 import { useAuthStore } from '@/app/store/authStore';
 import { api } from '@/app/lib/api';
+import { cloudRoutesEnabled } from '@/app/lib/cloudRoutes';
 
 function SettingsContent() {
   const { user, setUser } = useAuthStore();
@@ -278,6 +280,17 @@ function SettingsContent() {
 }
 
 export default function SettingsPage() {
+  // In self-hosted mode the SaaS user-settings page (profile, security,
+  // per-user API keys) doesn't apply — there's no user account. Redirect
+  // to the instance-settings page which holds the BYOK Anthropic key +
+  // license JWT uploader.
+  const router = useRouter();
+  useEffect(() => {
+    if (!cloudRoutesEnabled()) router.replace('/settings/instance');
+  }, [router]);
+
+  if (!cloudRoutesEnabled()) return null;
+
   return (
     <AuthGuard>
       <SettingsContent />

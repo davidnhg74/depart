@@ -11,6 +11,7 @@ import threading
 from queue import Queue, Empty
 
 from .connection_manager import ConnectionManager
+from ..utils.time import utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -158,17 +159,17 @@ class ConnectionPool:
                 database_type=getattr(connector, "database_type", "unknown"),
                 host=getattr(connector, "host", "unknown"),
                 port=getattr(connector, "port", 0),
-                created_at=datetime.utcnow(),
-                last_used=datetime.utcnow(),
+                created_at=utc_now(),
+                last_used=utc_now(),
                 use_count=1,
                 active_queries=0,
                 health_status="healthy",
-                last_health_check=datetime.utcnow(),
+                last_health_check=utc_now(),
                 response_time_ms=0.0,
             )
         else:
             stats = self.stats[connection_id]
-            stats.last_used = datetime.utcnow()
+            stats.last_used = utc_now()
             stats.use_count += 1
 
     def get_stats(self, connection_id: str) -> Optional[ConnectionStats]:
@@ -177,7 +178,7 @@ class ConnectionPool:
 
     def clear_idle_connections(self):
         """Remove idle connections to free resources."""
-        now = datetime.utcnow()
+        now = utc_now()
         cutoff = timedelta(seconds=self.max_idle_seconds)
 
         for conn_id in list(self.pools.keys()):
@@ -246,7 +247,7 @@ class CachedConnectionStats:
             return None
 
         cached_at = self.cache_time.get(connection_id)
-        if cached_at and (datetime.utcnow() - cached_at).total_seconds() > self.ttl_seconds:
+        if cached_at and (utc_now() - cached_at).total_seconds() > self.ttl_seconds:
             # Expired, remove
             del self.cache[connection_id]
             del self.cache_time[connection_id]
@@ -257,7 +258,7 @@ class CachedConnectionStats:
     def set(self, connection_id: str, stats: Dict[str, Any]):
         """Cache stats."""
         self.cache[connection_id] = stats
-        self.cache_time[connection_id] = datetime.utcnow()
+        self.cache_time[connection_id] = utc_now()
 
     def invalidate(self, connection_id: str):
         """Invalidate cached stats for a connection."""

@@ -17,6 +17,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from src.config import settings
+from src.migrate.ddl import apply_ddl, generate_schema_ddl, map_pg_type
+from src.migrate.introspect import introspect
 from src.migrate.keyset import Dialect
 from src.migrate.planner import LoadGroup, LoadPlan, TableRef
 from src.migrate.runner import Runner, TableSpec, _stream_batches
@@ -239,6 +241,135 @@ def test_runner_invokes_checkpoint_per_batch(schemas, sessions):
     assert seen[-1][1] == (10,)
     # All three checkpoints reference the destination table.
     assert all(s[0] == spec.target_table.qualified() for s in seen)
+
+
+# ─── Resume picks up after a prior checkpoint ────────────────────────────────
+
+
+def test_runner_resumes_from_checkpointed_pk(schemas, sessions):
+    """Simulate a prior run that loaded half the rows: the first 25
+    rows are pre-populated on the target, and the runner is told (via
+    the `resume` callback) that the last checkpointed PK was 25.
+    The runner should keyset-skip past those rows and copy only 26-50,
+    while the final Merkle verification still covers the full table."""
+    src_schema, dst_schema = schemas
+    src_session, dst_session, pg_conn = sessions
+    rows = [(i, f"item-{i}", i * 10) for i in range(1, 51)]
+    _create_seeded_source(pg_conn, src_schema, "items", rows)
+    _create_empty_target(pg_conn, dst_schema, "items")
+    # Pre-populate the target with rows 1..25 so the resumed run only
+    # needs to copy 26..50.
+    with pg_conn.cursor() as cur:
+        cur.executemany(
+            f"INSERT INTO {dst_schema}.items VALUES (%s, %s, %s)",
+            rows[:25],
+        )
+
+    spec = _spec(src_schema, dst_schema, "items")
+    plan = LoadPlan(groups=[LoadGroup(tables=[spec.target_table])])
+
+    seen: list = []
+
+    def record(table, last_pk, rows_so_far):
+        seen.append((last_pk, rows_so_far))
+
+    runner = Runner(
+        source_session=src_session,
+        target_session=dst_session,
+        target_pg_conn=pg_conn,
+        source_dialect=Dialect.POSTGRES,
+        batch_size=10,
+        checkpoint=record,
+        resume=lambda table: (25,),
+    )
+    result = runner.execute(plan, {spec.target_table.qualified(): spec})
+
+    target_result = result.tables[spec.target_table.qualified()]
+    # Only 25 rows copied this run (26..50), but the full-table Merkle
+    # pass should still match.
+    assert target_result.rows_copied == 25
+    assert target_result.last_pk == (50,)
+    assert target_result.verified
+    # Checkpoints only cover the resumed window.
+    assert [pk for pk, _ in seen] == [(35,), (45,), (50,)]
+
+
+# ─── DDL-generated target tables round-trip through the runner ───────────────
+
+
+def test_runner_loads_into_ddl_generated_target(schemas, sessions, pg_url):
+    """Introspect a seeded source, generate CREATE TABLE DDL for an
+    empty target, run the DDL, then load via the Runner. This is the
+    canonical Oracle-less rehearsal of the full greenfield flow:
+    introspect → generate DDL → apply DDL → copy → verify."""
+    src_schema, dst_schema = schemas
+    src_session, dst_session, pg_conn = sessions
+
+    # Seed the source with a mix of types that exercises the mapper.
+    with pg_conn.cursor() as cur:
+        cur.execute(
+            f"""
+            CREATE TABLE {src_schema}.orders (
+                id INTEGER PRIMARY KEY,
+                customer TEXT NOT NULL,
+                total NUMERIC(10, 2),
+                placed_at TIMESTAMP
+            )
+            """
+        )
+        cur.executemany(
+            f"INSERT INTO {src_schema}.orders VALUES (%s, %s, %s, %s)",
+            [
+                (1, "alice", 12.50, "2026-04-01 10:00:00"),
+                (2, "bob", 99.99, "2026-04-02 11:00:00"),
+                (3, "carol", 7.25, "2026-04-03 12:00:00"),
+            ],
+        )
+
+    # Introspect and generate DDL targeting the destination schema.
+    schema = introspect(src_session, Dialect.POSTGRES, src_schema)
+    specs = schema.build_specs(target_schema=dst_schema)
+    assert specs, "introspect should find the seeded table"
+
+    # Build a cols/pks map keyed by the target qualified name so the
+    # generated CREATE TABLEs land in the destination schema.
+    cols_by_target = {
+        spec.target_table.qualified(): schema.column_metadata[spec.source_table.qualified()]
+        for spec in specs.values()
+    }
+    pks_by_target = {
+        spec.target_table.qualified(): spec.pk_columns for spec in specs.values()
+    }
+    stmts = generate_schema_ddl(
+        [s.target_table for s in specs.values()],
+        cols_by_target,
+        pks_by_target,
+        map_type=map_pg_type,
+    )
+
+    # Apply on a dedicated non-autocommit connection so a mid-batch
+    # failure would roll back the whole thing.
+    ddl_conn = psycopg.connect(pg_url)
+    try:
+        apply_ddl(ddl_conn, stmts)
+    finally:
+        ddl_conn.close()
+
+    # Target table exists now — load data through the runner.
+    plan = LoadPlan(groups=[LoadGroup(tables=[s.target_table for s in specs.values()])])
+    runner = Runner(
+        source_session=src_session,
+        target_session=dst_session,
+        target_pg_conn=pg_conn,
+        source_dialect=Dialect.POSTGRES,
+        batch_size=10,
+    )
+    result = runner.execute(plan, specs)
+
+    target_qn = next(iter(specs)).split(".", 1)[0] + "." + "orders"
+    target_result = result.tables[target_qn]
+    assert target_result.rows_copied == 3
+    assert target_result.verified
 
 
 # ─── Sequence catch-up runs when target schema has owned sequences ───────────

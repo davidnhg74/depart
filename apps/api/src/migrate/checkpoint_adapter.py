@@ -75,3 +75,14 @@ def resume_pk(manager: CheckpointManager, migration_id: str, table: TableRef) ->
     if record is None:
         return None
     return decode_last_pk(record.last_rowid)
+
+
+def make_resume_callback(manager: CheckpointManager, migration_id: str):
+    """Return a `(table) -> Optional[tuple]` closure the runner can wire
+    into `Runner.resume`. Mirrors `make_checkpoint_callback` so the
+    runner stays oblivious to both the manager and the migration id."""
+
+    def callback(table: TableRef) -> Optional[tuple]:
+        return resume_pk(manager, migration_id, table)
+
+    return callback

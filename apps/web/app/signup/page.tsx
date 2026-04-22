@@ -5,8 +5,15 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { signup } from '@/app/lib/api';
 import { useAuthStore } from '@/app/store/authStore';
+import CloudOnlyNotice from '@/app/components/CloudOnlyNotice';
+import { cloudRoutesEnabled } from '@/app/lib/cloudRoutes';
 
 export default function SignupPage() {
+  if (!cloudRoutesEnabled()) return <CloudOnlyNotice page="Sign up" />;
+  return <SignupContent />;
+}
+
+function SignupContent() {
   const [email, setEmail] = useState('');
   const [fullName, setFullName] = useState('');
   const [password, setPassword] = useState('');

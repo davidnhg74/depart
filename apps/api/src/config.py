@@ -14,12 +14,38 @@ class Settings(BaseSettings):
         "postgresql+psycopg://depart_user:depart_secure_password@localhost:5432/depart",
     )
 
+    # Redis URL for the arq migration worker. localhost default lets
+    # the API run standalone in dev; docker-compose sets this to
+    # redis://redis:6379/0.
+    redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
     # Environment
     environment: str = os.getenv("ENVIRONMENT", "development")
     api_host: str = "0.0.0.0"
     api_port: int = 8000
     max_upload_size: int = int(os.getenv("MAX_UPLOAD_SIZE", str(50 * 1024 * 1024)))
     frontend_url: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
+
+    # Cloud routes (signup, billing, support, email verification) default
+    # to OFF so the self-hosted product image boots without Stripe /
+    # Resend / SaaS-signup exposure. The marketing/purchase site
+    # (depart.cloud) flips this to True. Tests enable it — see
+    # tests/conftest.py.
+    enable_cloud_routes: bool = os.getenv("ENABLE_CLOUD_ROUTES", "false").lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+    # Self-hosted auth (login, session, admin-gated user CRUD) defaults
+    # ON. Every enterprise deployment needs authentication — "localhost
+    # = admin" is not acceptable on internal VLANs. This flag exists
+    # so a single-user dev box can flip it off explicitly with
+    # ENABLE_SELF_HOSTED_AUTH=false, not so production installs can.
+    enable_self_hosted_auth: bool = os.getenv(
+        "ENABLE_SELF_HOSTED_AUTH", "true"
+    ).lower() in ("1", "true", "yes", "on")
 
     # AI/LLM
     anthropic_api_key: str = os.getenv("ANTHROPIC_API_KEY", "")

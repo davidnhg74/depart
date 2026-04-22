@@ -9,6 +9,8 @@ from datetime import datetime
 import logging
 from sqlalchemy import text
 
+from ..utils.time import utc_now
+
 logger = logging.getLogger(__name__)
 
 
@@ -241,7 +243,7 @@ class PermissionMapper:
                 unmappable=unmappable,
                 grant_sql=grant_sql,
                 overall_risk=overall_risk,
-                analyzed_at=datetime.utcnow().isoformat(),
+                analyzed_at=utc_now().isoformat(),
             )
 
         except Exception as e:

@@ -10,6 +10,8 @@ from typing import Optional, List, Dict, Any
 import logging
 from datetime import datetime
 
+from ..utils.time import utc_now
+
 logger = logging.getLogger(__name__)
 
 
@@ -88,7 +90,7 @@ class PostgresConnector:
 
             self.SessionLocal = sessionmaker(bind=self.engine, expire_on_commit=False)
             self.connected = True
-            self.last_check = datetime.utcnow()
+            self.last_check = utc_now()
 
             logger.info(
                 f"✓ PostgreSQL connection successful: {self.host}:{self.port}/{self.database}"

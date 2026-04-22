@@ -12,6 +12,7 @@ from ..auth.jwt import create_access_token, create_refresh_token
 from ..auth.password import hash_password, verify_password
 from ..auth.dependencies import get_current_user
 from ..config import settings
+from ..utils.time import utc_now
 from ..services.email import (
     send_verification_email,
     send_password_reset_email,
@@ -82,9 +83,9 @@ async def signup(request: SignupRequest, db: Session = Depends(get_db)):
             full_name=request.full_name,
             hashed_password=hash_password(request.password),
             plan=PlanEnum.TRIAL,
-            trial_starts_at=datetime.utcnow(),
-            trial_expires_at=datetime.utcnow() + timedelta(days=14),
-            usage_reset_at=datetime.utcnow(),
+            trial_starts_at=utc_now(),
+            trial_expires_at=utc_now() + timedelta(days=14),
+            usage_reset_at=utc_now(),
         )
 
         # Generate email verification token
@@ -201,7 +202,7 @@ async def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(
         # Generate reset token (1 hour expiry)
         reset_token = secrets.token_urlsafe(32)
         user.reset_token = reset_token
-        user.reset_token_expires = datetime.utcnow() + timedelta(hours=1)
+        user.reset_token_expires = utc_now() + timedelta(hours=1)
         db.commit()
 
         # Send reset email
@@ -216,7 +217,7 @@ async def reset_password(request: ResetPasswordRequest, db: Session = Depends(ge
     """Reset password with token."""
     user = db.query(User).filter(User.reset_token == request.token).first()
 
-    if not user or not user.reset_token_expires or user.reset_token_expires < datetime.utcnow():
+    if not user or not user.reset_token_expires or user.reset_token_expires < utc_now():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired reset token",

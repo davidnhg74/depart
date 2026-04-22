@@ -3,8 +3,15 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { verifyEmail } from '@/app/lib/api';
+import CloudOnlyNotice from '@/app/components/CloudOnlyNotice';
+import { cloudRoutesEnabled } from '@/app/lib/cloudRoutes';
 
 export default function VerifyEmailPage() {
+  if (!cloudRoutesEnabled()) return <CloudOnlyNotice page="Email verification" />;
+  return <VerifyEmailContent />;
+}
+
+function VerifyEmailContent() {
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('');
   const router = useRouter();

@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING, Optional, Union
 import uuid
 import logging
 
+from ..utils.time import utc_now
+
 if TYPE_CHECKING:
     from ..models import MigrationCheckpointRecord
 
@@ -45,8 +47,8 @@ class MigrationCheckpoint:
         self.last_rowid = last_rowid
         self.status = status  # in_progress, completed, failed
         self.error_message = error_message
-        self.created_at = datetime.utcnow()
-        self.updated_at = datetime.utcnow()
+        self.created_at = utc_now()
+        self.updated_at = utc_now()
 
     @property
     def progress_percentage(self) -> float:
@@ -106,7 +108,7 @@ class CheckpointManager:
             last_rowid=last_rowid,
             status=status,
             progress_percentage=(rows_processed / total_rows * 100) if total_rows > 0 else 0,
-            created_at=datetime.utcnow(),
+            created_at=utc_now(),
         )
 
         self.db.add(checkpoint)
@@ -169,7 +171,7 @@ class CheckpointManager:
 
         if migration:
             migration.status = "completed"
-            migration.completed_at = datetime.utcnow()
+            migration.completed_at = utc_now()
             self.db.commit()
             logger.info(f"Migration {migration_id} completed")
 
@@ -244,7 +246,7 @@ class CheckpointManager:
         for checkpoint in failed_checkpoints:
             checkpoint.status = "in_progress"
             checkpoint.error_message = None
-            checkpoint.updated_at = datetime.utcnow()
+            checkpoint.updated_at = utc_now()
             count += 1
 
         self.db.commit()
@@ -260,6 +262,6 @@ class CheckpointManager:
         if checkpoint:
             checkpoint.status = "failed"
             checkpoint.error_message = error_message
-            checkpoint.updated_at = datetime.utcnow()
+            checkpoint.updated_at = utc_now()
             self.db.commit()
             logger.error(f"Table {table_name} marked as failed: {error_message}")

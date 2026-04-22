@@ -25,7 +25,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from ..migration.checkpoint import CheckpointManager
-from .checkpoint_adapter import make_checkpoint_callback
+from .checkpoint_adapter import make_checkpoint_callback, make_resume_callback
+from .ddl import apply_ddl, generate_schema_ddl, map_oracle_type, map_pg_type
 from .introspect import introspect
 from .keyset import Dialect
 from .planner import plan_load_order
@@ -79,14 +80,24 @@ def main(argv: Optional[list[str]] = None) -> int:
     )
     print(f"plan: {len(plan.groups)} group(s), {len(plan.flat_tables())} table(s)", file=sys.stderr)
 
+    if args.create_tables:
+        _create_target_tables(pg_url, schema, specs, plan, src_dialect)
+
     # Checkpoint manager + adapter — all batches are persisted to the
-    # migrations table so a crash can resume.
+    # migrations table so a crash can resume. If `--migration-id` is
+    # supplied we reuse that row and pick up from the last checkpoint;
+    # otherwise we start a fresh migration.
     manager = CheckpointManager(dst_session)
-    migration_id = manager.create_migration(
-        f"{args.source_schema}->{args.target_schema}",
-    )
-    print(f"migration_id: {migration_id}", file=sys.stderr)
+    if args.migration_id:
+        migration_id = args.migration_id
+        print(f"resuming migration_id: {migration_id}", file=sys.stderr)
+    else:
+        migration_id = manager.create_migration(
+            f"{args.source_schema}->{args.target_schema}",
+        )
+        print(f"migration_id: {migration_id}", file=sys.stderr)
     callback = make_checkpoint_callback(manager, migration_id)
+    resume = make_resume_callback(manager, migration_id)
 
     runner = Runner(
         source_session=src_session,
@@ -95,6 +106,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         source_dialect=src_dialect,
         batch_size=args.batch_size,
         checkpoint=callback,
+        resume=resume,
     )
 
     result = runner.execute(plan, specs)
@@ -136,6 +148,19 @@ def _parse_args(argv: Optional[list[str]]) -> argparse.Namespace:
         help="Comma-separated table names to restrict to (default: every table with a PK)",
     )
     p.add_argument("--batch-size", type=int, default=5000, help="Rows per COPY batch (default 5000)")
+    p.add_argument(
+        "--migration-id",
+        default=None,
+        help="Resume an existing migration row by id instead of creating a new one. "
+        "Per-table keyset walks pick up after the last checkpointed PK.",
+    )
+    p.add_argument(
+        "--create-tables",
+        action="store_true",
+        help="Before loading, emit and run `CREATE TABLE IF NOT EXISTS` statements "
+        "in the target schema based on the introspected source. Columns use "
+        "best-effort type mappings; FKs are not emitted.",
+    )
     return p.parse_args(argv)
 
 
@@ -147,6 +172,37 @@ def _rewrite_schema(ref, src_schema: str, dst_schema: str):
     if ref.schema and ref.schema.upper() == src_schema.upper():
         return TableRef(schema=dst_schema, name=ref.name)
     return ref
+
+
+def _create_target_tables(pg_url: str, schema, specs, plan, src_dialect) -> None:
+    """Generate and execute `CREATE TABLE IF NOT EXISTS` statements in
+    the target Postgres in load-plan order, so parents exist before
+    children. Uses a dedicated non-autocommit psycopg connection so a
+    mid-batch failure rolls the whole schema back."""
+    map_type = map_oracle_type if src_dialect == Dialect.ORACLE else map_pg_type
+
+    # Build columns-by-target-qualified-name and PKs-by-target-qualified-name
+    # from the specs so the DDL is emitted in the destination namespace.
+    cols_by_target: dict = {}
+    pks_by_target: dict = {}
+    for spec in specs.values():
+        source_qn = spec.source_table.qualified()
+        target_qn = spec.target_table.qualified()
+        cols_by_target[target_qn] = schema.column_metadata[source_qn]
+        pks_by_target[target_qn] = spec.pk_columns
+
+    stmts = generate_schema_ddl(
+        plan.flat_tables(),
+        cols_by_target,
+        pks_by_target,
+        map_type=map_type,
+    )
+    print(f"creating {len(stmts)} target table(s)...", file=sys.stderr)
+    ddl_conn = psycopg.connect(pg_url)  # non-autocommit
+    try:
+        apply_ddl(ddl_conn, stmts)
+    finally:
+        ddl_conn.close()
 
 
 if __name__ == "__main__":
