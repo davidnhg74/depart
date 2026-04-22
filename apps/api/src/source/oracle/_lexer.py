@@ -20,6 +20,7 @@ This is a tokenizer, not a parser. It is replaced by the ANTLR-generated
 lexer once `make grammar` runs in CI/Docker, but its TOKENS contract is
 identical — see `_visitor.py` for the parse-tree -> IR layer that swaps in.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -32,22 +33,22 @@ class TokenKind(str, Enum):
     IDENT = "IDENT"
     STRING = "STRING"
     NUMBER = "NUMBER"
-    PUNCT = "PUNCT"             # ( ) , ; . :
-    OPERATOR = "OPERATOR"       # = + - * / || := => etc.
-    PERCENT_ATTR = "PERCENT_ATTR"   # %TYPE / %ROWTYPE / %FOUND etc.
-    AT_DBLINK = "AT_DBLINK"     # @dblink_name
+    PUNCT = "PUNCT"  # ( ) , ; . :
+    OPERATOR = "OPERATOR"  # = + - * / || := => etc.
+    PERCENT_ATTR = "PERCENT_ATTR"  # %TYPE / %ROWTYPE / %FOUND etc.
+    AT_DBLINK = "AT_DBLINK"  # @dblink_name
     EOF = "EOF"
 
 
 @dataclass(frozen=True)
 class Token:
     kind: TokenKind
-    text: str                   # original text, case preserved
-    upper: str                  # uppercased; "" for STRING/NUMBER
-    line: int                   # 1-indexed
-    col: int                    # 1-indexed (start column)
+    text: str  # original text, case preserved
+    upper: str  # uppercased; "" for STRING/NUMBER
+    line: int  # 1-indexed
+    col: int  # 1-indexed (start column)
     end_line: int
-    end_col: int                # exclusive
+    end_col: int  # exclusive
 
     def is_kw(self, *names: str) -> bool:
         return self.kind == TokenKind.KEYWORD and self.upper in names
@@ -56,24 +57,116 @@ class Token:
 # Keyword set — superset of what we currently key off. Adding here is harmless;
 # missing one just classifies as IDENT and we lose a detection. Conservative
 # bias toward classifying-as-keyword on common SQL/PL-SQL words.
-_KEYWORDS = frozenset({
-    "CREATE", "OR", "REPLACE", "PROCEDURE", "FUNCTION", "PACKAGE", "BODY",
-    "TRIGGER", "VIEW", "MATERIALIZED", "INDEX", "UNIQUE", "SEQUENCE", "TABLE",
-    "GLOBAL", "TEMPORARY", "TYPE", "AS", "IS", "BEGIN", "END", "DECLARE",
-    "RETURN", "RETURNS", "LANGUAGE", "PLPGSQL", "PRAGMA", "AUTONOMOUS_TRANSACTION",
-    "EXCEPTION", "RAISE", "WHEN", "OTHERS", "THEN", "ELSE", "ELSIF", "IF",
-    "FOR", "WHILE", "LOOP", "EXIT", "CONTINUE", "GOTO", "NULL", "TRUE", "FALSE",
-    "SELECT", "FROM", "WHERE", "AND", "OR", "NOT", "IN", "ON", "INTO", "USING",
-    "INSERT", "UPDATE", "DELETE", "MERGE", "VALUES", "SET", "WITH", "CONNECT",
-    "BY", "PRIOR", "START", "LEVEL", "RECURSIVE", "EXECUTE", "IMMEDIATE",
-    "CURSOR", "BULK", "COLLECT", "FORALL", "OPEN", "FETCH", "CLOSE", "REF",
-    "OUT", "INOUT",
-    "PRIMARY", "KEY", "FOREIGN", "REFERENCES", "CHECK", "CONSTRAINT",
-    "DEFAULT", "NOT_NULL_HINT",     # NOT NULL handled at parse-time
-    "PARTITION", "BY", "RANGE", "LIST", "HASH", "INTERVAL",
-    "TABLESPACE", "STORAGE", "PCTFREE", "INITRANS", "LOGGING", "NOCOMPRESS",
-    "PARALLEL", "NOPARALLEL", "ENABLE", "DISABLE", "VALIDATE", "NOVALIDATE",
-})
+_KEYWORDS = frozenset(
+    {
+        "CREATE",
+        "OR",
+        "REPLACE",
+        "PROCEDURE",
+        "FUNCTION",
+        "PACKAGE",
+        "BODY",
+        "TRIGGER",
+        "VIEW",
+        "MATERIALIZED",
+        "INDEX",
+        "UNIQUE",
+        "SEQUENCE",
+        "TABLE",
+        "GLOBAL",
+        "TEMPORARY",
+        "TYPE",
+        "AS",
+        "IS",
+        "BEGIN",
+        "END",
+        "DECLARE",
+        "RETURN",
+        "RETURNS",
+        "LANGUAGE",
+        "PLPGSQL",
+        "PRAGMA",
+        "AUTONOMOUS_TRANSACTION",
+        "EXCEPTION",
+        "RAISE",
+        "WHEN",
+        "OTHERS",
+        "THEN",
+        "ELSE",
+        "ELSIF",
+        "IF",
+        "FOR",
+        "WHILE",
+        "LOOP",
+        "EXIT",
+        "CONTINUE",
+        "GOTO",
+        "NULL",
+        "TRUE",
+        "FALSE",
+        "SELECT",
+        "FROM",
+        "WHERE",
+        "AND",
+        "OR",
+        "NOT",
+        "IN",
+        "ON",
+        "INTO",
+        "USING",
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "MERGE",
+        "VALUES",
+        "SET",
+        "WITH",
+        "CONNECT",
+        "BY",
+        "PRIOR",
+        "START",
+        "LEVEL",
+        "RECURSIVE",
+        "EXECUTE",
+        "IMMEDIATE",
+        "CURSOR",
+        "BULK",
+        "COLLECT",
+        "FORALL",
+        "OPEN",
+        "FETCH",
+        "CLOSE",
+        "REF",
+        "OUT",
+        "INOUT",
+        "PRIMARY",
+        "KEY",
+        "FOREIGN",
+        "REFERENCES",
+        "CHECK",
+        "CONSTRAINT",
+        "DEFAULT",
+        "NOT_NULL_HINT",  # NOT NULL handled at parse-time
+        "PARTITION",
+        "BY",
+        "RANGE",
+        "LIST",
+        "HASH",
+        "INTERVAL",
+        "TABLESPACE",
+        "STORAGE",
+        "PCTFREE",
+        "INITRANS",
+        "LOGGING",
+        "NOCOMPRESS",
+        "PARALLEL",
+        "NOPARALLEL",
+        "ENABLE",
+        "DISABLE",
+        "VALIDATE",
+        "NOVALIDATE",
+    }
+)
 
 
 class Lexer:
@@ -185,7 +278,7 @@ class Lexer:
     def _read_string(self) -> Token:
         line, col = self._line, self._col
         start = self._i
-        self._advance()         # opening '
+        self._advance()  # opening '
         while self._i < self._n:
             if self._src[self._i] == "'":
                 # '' is escape for single quote inside string
@@ -199,7 +292,7 @@ class Lexer:
                 self._newline()
             else:
                 self._advance()
-        text = self._src[start:self._i]
+        text = self._src[start : self._i]
         return Token(TokenKind.STRING, text, "", line, col, self._line, self._col)
 
     def _read_q_string(self) -> Optional[Token]:
@@ -209,8 +302,8 @@ class Lexer:
             return None
         line, col = self._line, self._col
         start = self._i
-        self._advance()         # q
-        self._advance()         # '
+        self._advance()  # q
+        self._advance()  # '
         opener = self._src[self._i]
         closer = {"(": ")", "[": "]", "{": "}", "<": ">"}.get(opener, opener)
         self._advance()
@@ -223,61 +316,64 @@ class Lexer:
                 self._newline()
             else:
                 self._advance()
-        text = self._src[start:self._i]
+        text = self._src[start : self._i]
         return Token(TokenKind.STRING, text, "", line, col, self._line, self._col)
 
     def _read_quoted_ident(self) -> Token:
         line, col = self._line, self._col
         start = self._i
-        self._advance()         # opening "
+        self._advance()  # opening "
         while self._i < self._n and self._src[self._i] != '"':
             if self._src[self._i] == "\n":
                 self._newline()
             else:
                 self._advance()
         if self._i < self._n:
-            self._advance()     # closing "
-        text = self._src[start:self._i]
-        return Token(TokenKind.IDENT, text, text.strip('"').upper(),
-                     line, col, self._line, self._col)
+            self._advance()  # closing "
+        text = self._src[start : self._i]
+        return Token(
+            TokenKind.IDENT, text, text.strip('"').upper(), line, col, self._line, self._col
+        )
 
     def _read_number(self) -> Token:
         line, col = self._line, self._col
         start = self._i
         while self._i < self._n and (self._src[self._i].isdigit() or self._src[self._i] in ".eE+-"):
             # Be careful with sign — only consume +/- after e/E
-            if self._src[self._i] in "+-" and self._i > start and self._src[self._i - 1] not in "eE":
+            if (
+                self._src[self._i] in "+-"
+                and self._i > start
+                and self._src[self._i - 1] not in "eE"
+            ):
                 break
             self._advance()
-        text = self._src[start:self._i]
+        text = self._src[start : self._i]
         return Token(TokenKind.NUMBER, text, "", line, col, self._line, self._col)
 
     def _read_percent_attr(self) -> Token:
         line, col = self._line, self._col
         start = self._i
-        self._advance()         # %
+        self._advance()  # %
         while self._i < self._n and (self._src[self._i].isalnum() or self._src[self._i] == "_"):
             self._advance()
-        text = self._src[start:self._i]
-        return Token(TokenKind.PERCENT_ATTR, text, text.upper(),
-                     line, col, self._line, self._col)
+        text = self._src[start : self._i]
+        return Token(TokenKind.PERCENT_ATTR, text, text.upper(), line, col, self._line, self._col)
 
     def _read_at_dblink(self) -> Token:
         line, col = self._line, self._col
         start = self._i
-        self._advance()         # @
+        self._advance()  # @
         while self._i < self._n and (self._src[self._i].isalnum() or self._src[self._i] in "_."):
             self._advance()
-        text = self._src[start:self._i]
-        return Token(TokenKind.AT_DBLINK, text, text.upper(),
-                     line, col, self._line, self._col)
+        text = self._src[start : self._i]
+        return Token(TokenKind.AT_DBLINK, text, text.upper(), line, col, self._line, self._col)
 
     def _read_ident_or_keyword(self) -> Token:
         line, col = self._line, self._col
         start = self._i
         while self._i < self._n and (self._src[self._i].isalnum() or self._src[self._i] == "_"):
             self._advance()
-        text = self._src[start:self._i]
+        text = self._src[start : self._i]
         upper = text.upper()
         kind = TokenKind.KEYWORD if upper in _KEYWORDS else TokenKind.IDENT
         return Token(kind, text, upper, line, col, self._line, self._col)
@@ -288,13 +384,21 @@ class Lexer:
         # Multi-char operators: := => || <= >= <> != **
         c = self._src[self._i]
         nxt = self._peek(1)
-        if (c, nxt) in {(":", "="), ("=", ">"), ("|", "|"), ("<", "="),
-                        (">", "="), ("<", ">"), ("!", "="), ("*", "*")}:
+        if (c, nxt) in {
+            (":", "="),
+            ("=", ">"),
+            ("|", "|"),
+            ("<", "="),
+            (">", "="),
+            ("<", ">"),
+            ("!", "="),
+            ("*", "*"),
+        }:
             self._advance()
             self._advance()
         else:
             self._advance()
-        text = self._src[start:self._i]
+        text = self._src[start : self._i]
         return Token(TokenKind.OPERATOR, text, text, line, col, self._line, self._col)
 
     def _punct(self) -> Token:

@@ -130,14 +130,18 @@ class OracleConnector:
         """Get list of all tables in current schema."""
         try:
             session = self.get_session()
-            tables = session.execute(
-                text(
-                    """
+            tables = (
+                session.execute(
+                    text(
+                        """
                     SELECT table_name FROM user_tables
                     ORDER BY table_name
                     """
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             session.close()
             return tables
         except Exception as e:
@@ -148,9 +152,7 @@ class OracleConnector:
         """Get row count for a table."""
         try:
             session = self.get_session()
-            count = session.execute(
-                text(f"SELECT COUNT(*) FROM {table_name}")
-            ).scalar()
+            count = session.execute(text(f"SELECT COUNT(*) FROM {table_name}")).scalar()
             session.close()
             return count or 0
         except Exception as e:
@@ -166,11 +168,13 @@ class OracleConnector:
             session = self.get_session()
             # Query dba_segments (requires DBA role)
             size = session.execute(
-                text(f"""
+                text(
+                    f"""
                     SELECT SUM(bytes)
                     FROM dba_segments
                     WHERE segment_name = '{table_name}'
-                """)
+                """
+                )
             ).scalar()
             session.close()
             return size or 0
@@ -197,12 +201,14 @@ class OracleConnector:
 
             # Create test table
             session.execute(
-                text(f"""
+                text(
+                    f"""
                     CREATE TABLE {table_name} (
                         id NUMBER PRIMARY KEY,
                         test_col VARCHAR2(100)
                     )
-                """)
+                """
+                )
             )
 
             # Drop test table
@@ -227,18 +233,18 @@ class OracleConnector:
 
             # Create table
             session.execute(
-                text(f"""
+                text(
+                    f"""
                     CREATE TABLE {table_name} (
                         id NUMBER PRIMARY KEY,
                         test_col VARCHAR2(100)
                     )
-                """)
+                """
+                )
             )
 
             # Insert row
-            session.execute(
-                text(f"INSERT INTO {table_name} VALUES (1, 'test')")
-            )
+            session.execute(text(f"INSERT INTO {table_name} VALUES (1, 'test')"))
 
             # Drop table
             session.execute(text(f"DROP TABLE {table_name}"))

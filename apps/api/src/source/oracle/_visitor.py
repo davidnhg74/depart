@@ -16,6 +16,7 @@ Design:
   * Errors from the parser arrive on a custom ErrorListener and become
     Module-level Diagnostics — we do not raise.
 """
+
 from __future__ import annotations
 
 import importlib
@@ -97,13 +98,20 @@ def parse_with_antlr(source: str, *, name: str = "<inline>") -> Module:
 
     class _Collector(ErrorListener):
         def syntaxError(self, recognizer, offendingSymbol, line, column, msg, e):  # noqa: N802
-            diagnostics.append(Diagnostic(
-                code="ORA.PARSE.SYNTAX",
-                severity=Severity.ERROR,
-                message=msg,
-                span=Span(file=None, start_line=line, start_col=column,
-                          end_line=line, end_col=column + 1),
-            ))
+            diagnostics.append(
+                Diagnostic(
+                    code="ORA.PARSE.SYNTAX",
+                    severity=Severity.ERROR,
+                    message=msg,
+                    span=Span(
+                        file=None,
+                        start_line=line,
+                        start_col=column,
+                        end_line=line,
+                        end_col=column + 1,
+                    ),
+                )
+            )
 
     stream = InputStream(source)
     lexer = PlSqlLexer(stream)
@@ -140,7 +148,7 @@ class _IRVisitor:
 
     name: str
     source: str
-    PlSqlParserVisitor: type     # injected so this module is import-safe
+    PlSqlParserVisitor: type  # injected so this module is import-safe
 
     def __post_init__(self) -> None:
         self.module = Module(name=self.name, span=_module_span(self.source))
@@ -164,145 +172,175 @@ class _IRVisitor:
     def visit_create_table(self, ctx) -> None:
         name = _extract_object_name(ctx, "tableview_name", "table_name")
         is_global_temp = _ctx_text(ctx).upper().startswith("CREATE GLOBAL TEMPORARY")
-        self.module.objects.append(Table(
-            kind=ObjectKind.TABLE,
-            name=name,
-            is_global_temp=is_global_temp,
-            span=_span_of(ctx),
-            line_count=_line_count(ctx),
-            raw_source=_ctx_text(ctx),
-        ))
+        self.module.objects.append(
+            Table(
+                kind=ObjectKind.TABLE,
+                name=name,
+                is_global_temp=is_global_temp,
+                span=_span_of(ctx),
+                line_count=_line_count(ctx),
+                raw_source=_ctx_text(ctx),
+            )
+        )
 
     def visit_create_view(self, ctx) -> None:
         name = _extract_object_name(ctx, "tableview_name")
         is_materialized = _ctx_text(ctx).upper().startswith("CREATE MATERIALIZED")
-        self.module.objects.append(View(
-            kind=ObjectKind.MATERIALIZED_VIEW if is_materialized else ObjectKind.VIEW,
-            name=name,
-            is_materialized=is_materialized,
-            span=_span_of(ctx),
-            line_count=_line_count(ctx),
-            raw_source=_ctx_text(ctx),
-        ))
+        self.module.objects.append(
+            View(
+                kind=ObjectKind.MATERIALIZED_VIEW if is_materialized else ObjectKind.VIEW,
+                name=name,
+                is_materialized=is_materialized,
+                span=_span_of(ctx),
+                line_count=_line_count(ctx),
+                raw_source=_ctx_text(ctx),
+            )
+        )
 
     def visit_create_index(self, ctx) -> None:
         name = _extract_object_name(ctx, "index_name")
         is_unique = "UNIQUE" in _ctx_text(ctx).upper().split()[:5]
-        self.module.objects.append(Index(
-            kind=ObjectKind.INDEX,
-            name=name,
-            unique=is_unique,
-            span=_span_of(ctx),
-            line_count=_line_count(ctx),
-            raw_source=_ctx_text(ctx),
-        ))
+        self.module.objects.append(
+            Index(
+                kind=ObjectKind.INDEX,
+                name=name,
+                unique=is_unique,
+                span=_span_of(ctx),
+                line_count=_line_count(ctx),
+                raw_source=_ctx_text(ctx),
+            )
+        )
 
     def visit_create_sequence(self, ctx) -> None:
         name = _extract_object_name(ctx, "sequence_name")
-        self.module.objects.append(Sequence(
-            kind=ObjectKind.SEQUENCE,
-            name=name,
-            span=_span_of(ctx),
-            line_count=_line_count(ctx),
-            raw_source=_ctx_text(ctx),
-        ))
+        self.module.objects.append(
+            Sequence(
+                kind=ObjectKind.SEQUENCE,
+                name=name,
+                span=_span_of(ctx),
+                line_count=_line_count(ctx),
+                raw_source=_ctx_text(ctx),
+            )
+        )
 
     def visit_create_trigger(self, ctx) -> None:
         name = _extract_object_name(ctx, "trigger_name")
-        self.module.objects.append(Trigger(
-            kind=ObjectKind.TRIGGER,
-            name=name,
-            span=_span_of(ctx),
-            line_count=_line_count(ctx),
-            raw_source=_ctx_text(ctx),
-        ))
+        self.module.objects.append(
+            Trigger(
+                kind=ObjectKind.TRIGGER,
+                name=name,
+                span=_span_of(ctx),
+                line_count=_line_count(ctx),
+                raw_source=_ctx_text(ctx),
+            )
+        )
 
     def visit_create_procedure_body(self, ctx) -> None:
         name = _extract_object_name(ctx, "procedure_name")
-        self.module.objects.append(Subprogram(
-            kind=ObjectKind.PROCEDURE,
-            name=name,
-            span=_span_of(ctx),
-            line_count=_line_count(ctx),
-            raw_source=_ctx_text(ctx),
-        ))
+        self.module.objects.append(
+            Subprogram(
+                kind=ObjectKind.PROCEDURE,
+                name=name,
+                span=_span_of(ctx),
+                line_count=_line_count(ctx),
+                raw_source=_ctx_text(ctx),
+            )
+        )
 
     def visit_create_function_body(self, ctx) -> None:
         name = _extract_object_name(ctx, "function_name")
-        self.module.objects.append(Subprogram(
-            kind=ObjectKind.FUNCTION,
-            name=name,
-            span=_span_of(ctx),
-            line_count=_line_count(ctx),
-            raw_source=_ctx_text(ctx),
-        ))
+        self.module.objects.append(
+            Subprogram(
+                kind=ObjectKind.FUNCTION,
+                name=name,
+                span=_span_of(ctx),
+                line_count=_line_count(ctx),
+                raw_source=_ctx_text(ctx),
+            )
+        )
 
     def visit_create_package(self, ctx) -> None:
         name = _extract_object_name(ctx, "package_name")
-        self.module.objects.append(Package(
-            kind=ObjectKind.PACKAGE,
-            name=name,
-            is_body=False,
-            span=_span_of(ctx),
-            line_count=_line_count(ctx),
-            raw_source=_ctx_text(ctx),
-        ))
+        self.module.objects.append(
+            Package(
+                kind=ObjectKind.PACKAGE,
+                name=name,
+                is_body=False,
+                span=_span_of(ctx),
+                line_count=_line_count(ctx),
+                raw_source=_ctx_text(ctx),
+            )
+        )
 
     def visit_create_package_body(self, ctx) -> None:
         name = _extract_object_name(ctx, "package_name")
-        self.module.objects.append(Package(
-            kind=ObjectKind.PACKAGE_BODY,
-            name=name,
-            is_body=True,
-            span=_span_of(ctx),
-            line_count=_line_count(ctx),
-            raw_source=_ctx_text(ctx),
-        ))
+        self.module.objects.append(
+            Package(
+                kind=ObjectKind.PACKAGE_BODY,
+                name=name,
+                is_body=True,
+                span=_span_of(ctx),
+                line_count=_line_count(ctx),
+                raw_source=_ctx_text(ctx),
+            )
+        )
 
     # ─── construct-tagging rules ─────────────────────────────────────────────
 
     def visit_merge_statement(self, ctx) -> None:
-        self._refs.append(ConstructRef(
-            tag=ConstructTag.MERGE,
-            span=_span_of(ctx),
-            snippet=_first_line(_ctx_text(ctx)),
-        ))
+        self._refs.append(
+            ConstructRef(
+                tag=ConstructTag.MERGE,
+                span=_span_of(ctx),
+                snippet=_first_line(_ctx_text(ctx)),
+            )
+        )
 
     def visit_hierarchical_query_clause(self, ctx) -> None:
-        self._refs.append(ConstructRef(
-            tag=ConstructTag.CONNECT_BY,
-            span=_span_of(ctx),
-            snippet=_first_line(_ctx_text(ctx)),
-        ))
+        self._refs.append(
+            ConstructRef(
+                tag=ConstructTag.CONNECT_BY,
+                span=_span_of(ctx),
+                snippet=_first_line(_ctx_text(ctx)),
+            )
+        )
 
     def visit_forall_statement(self, ctx) -> None:
-        self._refs.append(ConstructRef(
-            tag=ConstructTag.FORALL,
-            span=_span_of(ctx),
-            snippet=_first_line(_ctx_text(ctx)),
-        ))
+        self._refs.append(
+            ConstructRef(
+                tag=ConstructTag.FORALL,
+                span=_span_of(ctx),
+                snippet=_first_line(_ctx_text(ctx)),
+            )
+        )
 
     def visit_execute_immediate(self, ctx) -> None:
-        self._refs.append(ConstructRef(
-            tag=ConstructTag.EXECUTE_IMMEDIATE,
-            span=_span_of(ctx),
-            snippet=_first_line(_ctx_text(ctx)),
-        ))
+        self._refs.append(
+            ConstructRef(
+                tag=ConstructTag.EXECUTE_IMMEDIATE,
+                span=_span_of(ctx),
+                snippet=_first_line(_ctx_text(ctx)),
+            )
+        )
 
     def visit_pragma_declaration(self, ctx) -> None:
         text = _ctx_text(ctx).upper()
         if "AUTONOMOUS_TRANSACTION" in text:
-            self._refs.append(ConstructRef(
-                tag=ConstructTag.AUTONOMOUS_TXN,
-                span=_span_of(ctx),
-                snippet=_first_line(_ctx_text(ctx)),
-            ))
+            self._refs.append(
+                ConstructRef(
+                    tag=ConstructTag.AUTONOMOUS_TXN,
+                    span=_span_of(ctx),
+                    snippet=_first_line(_ctx_text(ctx)),
+                )
+            )
         elif "EXCEPTION_INIT" in text:
-            self._refs.append(ConstructRef(
-                tag=ConstructTag.PRAGMA_EXCEPTION_INIT,
-                span=_span_of(ctx),
-                snippet=_first_line(_ctx_text(ctx)),
-            ))
+            self._refs.append(
+                ConstructRef(
+                    tag=ConstructTag.PRAGMA_EXCEPTION_INIT,
+                    span=_span_of(ctx),
+                    snippet=_first_line(_ctx_text(ctx)),
+                )
+            )
 
 
 # ─── Dispatcher: bridges ANTLR's CamelCase methods to our snake_case ─────────
@@ -313,25 +351,26 @@ def _build_dispatcher(target: _IRVisitor):
     to the snake_case methods on `target`. We do this dynamically so the
     dispatcher class only exists when ANTLR is actually loaded."""
     import importlib
+
     visitor_mod = importlib.import_module(f"{_GENERATED_PKG}.PlSqlParserVisitor")
     PlSqlParserVisitor = visitor_mod.PlSqlParserVisitor
 
     proxies = {}
     rule_to_method = {
-        "Create_table":             "visit_create_table",
-        "Create_view":              "visit_create_view",
-        "Create_index":             "visit_create_index",
-        "Create_sequence":          "visit_create_sequence",
-        "Create_trigger":           "visit_create_trigger",
-        "Create_procedure_body":    "visit_create_procedure_body",
-        "Create_function_body":     "visit_create_function_body",
-        "Create_package":           "visit_create_package",
-        "Create_package_body":      "visit_create_package_body",
-        "Merge_statement":          "visit_merge_statement",
-        "Hierarchical_query_clause":"visit_hierarchical_query_clause",
-        "Forall_statement":         "visit_forall_statement",
-        "Execute_immediate":        "visit_execute_immediate",
-        "Pragma_declaration":       "visit_pragma_declaration",
+        "Create_table": "visit_create_table",
+        "Create_view": "visit_create_view",
+        "Create_index": "visit_create_index",
+        "Create_sequence": "visit_create_sequence",
+        "Create_trigger": "visit_create_trigger",
+        "Create_procedure_body": "visit_create_procedure_body",
+        "Create_function_body": "visit_create_function_body",
+        "Create_package": "visit_create_package",
+        "Create_package_body": "visit_create_package_body",
+        "Merge_statement": "visit_merge_statement",
+        "Hierarchical_query_clause": "visit_hierarchical_query_clause",
+        "Forall_statement": "visit_forall_statement",
+        "Execute_immediate": "visit_execute_immediate",
+        "Pragma_declaration": "visit_pragma_declaration",
     }
     for rule, method_name in rule_to_method.items():
         target_method = getattr(target, method_name)
@@ -340,7 +379,9 @@ def _build_dispatcher(target: _IRVisitor):
             def proxy(self, ctx):
                 tm(ctx)
                 return self.visitChildren(ctx)
+
             return proxy
+
         proxies[f"visit{rule}"] = make_proxy(target_method)
 
     DispatcherCls = type("_IRVisitorDispatcher", (PlSqlParserVisitor,), proxies)
@@ -361,9 +402,13 @@ def _make_sentinel(span: Span) -> Subprogram:
 
 def _module_span(source: str) -> Span:
     lines = source.split("\n")
-    return Span(file=None, start_line=1, start_col=1,
-                end_line=max(1, len(lines)),
-                end_col=len(lines[-1]) + 1 if lines else 1)
+    return Span(
+        file=None,
+        start_line=1,
+        start_col=1,
+        end_line=max(1, len(lines)),
+        end_col=len(lines[-1]) + 1 if lines else 1,
+    )
 
 
 def _span_of(ctx) -> Span:
@@ -373,7 +418,7 @@ def _span_of(ctx) -> Span:
     return Span(
         file=None,
         start_line=start.line,
-        start_col=start.column + 1,             # ANTLR is 0-indexed; we use 1-indexed
+        start_col=start.column + 1,  # ANTLR is 0-indexed; we use 1-indexed
         end_line=stop.line,
         end_col=(stop.column + len(stop.text or "")) + 1,
     )

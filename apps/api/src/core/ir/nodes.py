@@ -14,6 +14,7 @@ Design rules:
     real consumer (an emitter or transform) needs to distinguish it; do not
     speculate.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -29,6 +30,7 @@ from ..diagnostics.diagnostic import Span
 @dataclass
 class Module:
     """A parse unit — one file, one zip entry, or one inline snippet."""
+
     name: str
     objects: List["SchemaObject"] = field(default_factory=list)
     span: Span = field(default_factory=Span.unknown)
@@ -57,12 +59,13 @@ class ObjectKind(str, Enum):
 @dataclass
 class SchemaObject:
     """A named top-level construct. Subclasses fill in details."""
+
     kind: ObjectKind
     name: str
     schema: Optional[str] = None
     span: Span = field(default_factory=Span.unknown)
     line_count: int = 0
-    raw_source: str = ""        # original text; preserved for re-emission/debug
+    raw_source: str = ""  # original text; preserved for re-emission/debug
     diagnostics: List[object] = field(default_factory=list)  # Diagnostic, but avoid circular import
 
 
@@ -114,7 +117,7 @@ class Index(SchemaObject):
 @dataclass
 class Trigger(SchemaObject):
     table: str = ""
-    timing: str = ""        # BEFORE/AFTER/INSTEAD OF
+    timing: str = ""  # BEFORE/AFTER/INSTEAD OF
     events: List[str] = field(default_factory=list)  # INSERT/UPDATE/DELETE
 
     def __post_init__(self) -> None:
@@ -125,9 +128,10 @@ class Trigger(SchemaObject):
 @dataclass
 class Subprogram(SchemaObject):
     """PROCEDURE or FUNCTION."""
+
     parameters: List["Parameter"] = field(default_factory=list)
-    return_type: Optional["TypeRef"] = None       # None for procedures
-    body: str = ""                                # PL/SQL body text; structured later
+    return_type: Optional["TypeRef"] = None  # None for procedures
+    body: str = ""  # PL/SQL body text; structured later
     referenced_constructs: List["ConstructRef"] = field(default_factory=list)
 
     def __post_init__(self) -> None:
@@ -138,6 +142,7 @@ class Subprogram(SchemaObject):
 @dataclass
 class Package(SchemaObject):
     """Spec or body. The `is_body` flag distinguishes."""
+
     is_body: bool = False
     subprograms: List[Subprogram] = field(default_factory=list)
     state_variables: List["Parameter"] = field(default_factory=list)  # package-state -> GUC
@@ -154,6 +159,7 @@ class UnsupportedConstruct(SchemaObject):
     Carries enough context that a human or AI rewrite can address it later.
     Always emits a CRITICAL diagnostic at extraction time.
     """
+
     reason: str = ""
 
     def __post_init__(self) -> None:
@@ -170,17 +176,18 @@ class TypeRef:
     (e.g. NUMBER, VARCHAR2, DATE); precision/scale/byte_or_char as parsed.
     Mapping to target types happens in the type_map transform.
     """
+
     name: str
     precision: Optional[int] = None
     scale: Optional[int] = None
-    byte_or_char: Optional[str] = None      # 'BYTE'/'CHAR' for VARCHAR2 only
+    byte_or_char: Optional[str] = None  # 'BYTE'/'CHAR' for VARCHAR2 only
 
 
 @dataclass
 class Parameter:
     name: str
     type: TypeRef
-    mode: str = "IN"        # IN/OUT/IN OUT
+    mode: str = "IN"  # IN/OUT/IN OUT
     default: Optional[str] = None
 
 
@@ -196,18 +203,18 @@ class Column:
 @dataclass
 class Constraint:
     name: Optional[str]
-    kind: str                       # PRIMARY KEY / FOREIGN KEY / UNIQUE / CHECK / NOT NULL
+    kind: str  # PRIMARY KEY / FOREIGN KEY / UNIQUE / CHECK / NOT NULL
     columns: List[str] = field(default_factory=list)
     references_table: Optional[str] = None
     references_columns: List[str] = field(default_factory=list)
-    expression: Optional[str] = None        # for CHECK
+    expression: Optional[str] = None  # for CHECK
 
 
 @dataclass
 class Partitioning:
-    strategy: str                   # RANGE / LIST / HASH / INTERVAL / REF
+    strategy: str  # RANGE / LIST / HASH / INTERVAL / REF
     columns: List[str] = field(default_factory=list)
-    raw_clause: str = ""            # full original clause, for fidelity-emit
+    raw_clause: str = ""  # full original clause, for fidelity-emit
 
 
 # ─── Embedded Oracle/PL-SQL constructs we always want to detect ───────────────
@@ -231,7 +238,7 @@ class ConstructTag(str, Enum):
     DBLINK = "DBLINK"
     SPATIAL = "SPATIAL"
     ORACLE_TEXT = "ORACLE_TEXT"
-    OUTER_JOIN_PLUS = "OUTER_JOIN_PLUS"     # the (+) operator
+    OUTER_JOIN_PLUS = "OUTER_JOIN_PLUS"  # the (+) operator
     PRAGMA_EXCEPTION_INIT = "PRAGMA_EXCEPTION_INIT"
     RAISE_APPLICATION_ERROR = "RAISE_APPLICATION_ERROR"
     HIERARCHICAL_PSEUDOCOLUMN = "HIERARCHICAL_PSEUDOCOLUMN"  # LEVEL, CONNECT_BY_ISLEAF, etc.
@@ -242,7 +249,7 @@ class ConstructTag(str, Enum):
     EXTERNAL_PROCEDURE = "EXTERNAL_PROCEDURE"
     VPD_POLICY = "VPD_POLICY"
     REF_CURSOR = "REF_CURSOR"
-    PERCENT_TYPE = "PERCENT_TYPE"           # %TYPE / %ROWTYPE
+    PERCENT_TYPE = "PERCENT_TYPE"  # %TYPE / %ROWTYPE
     ROWNUM = "ROWNUM"
     ROWID = "ROWID"
 
@@ -250,18 +257,19 @@ class ConstructTag(str, Enum):
 @dataclass(frozen=True)
 class ConstructRef:
     """A typed occurrence of a construct inside a SchemaObject's body."""
+
     tag: ConstructTag
     span: Span
-    snippet: str = ""               # short excerpt for display (~80 chars)
+    snippet: str = ""  # short excerpt for display (~80 chars)
 
 
 # ─── Tier classification (drives complexity scoring + cost estimation) ────────
 
 
 class Tier(str, Enum):
-    A = "A"     # auto-convertible: 1x weight
-    B = "B"     # needs review: 5x weight
-    C = "C"     # must rewrite: 20x weight
+    A = "A"  # auto-convertible: 1x weight
+    B = "B"  # needs review: 5x weight
+    C = "C"  # must rewrite: 20x weight
 
 
 # Source-of-truth tier mapping for tagged constructs. Owned here so the
@@ -269,35 +277,35 @@ class Tier(str, Enum):
 # read from the same table.
 TIER_FOR_TAG: dict = {
     # Tier A (deterministic, low risk)
-    ConstructTag.DBMS_OUTPUT:                  Tier.A,
-    ConstructTag.PERCENT_TYPE:                 Tier.A,
-    ConstructTag.RAISE_APPLICATION_ERROR:      Tier.A,
+    ConstructTag.DBMS_OUTPUT: Tier.A,
+    ConstructTag.PERCENT_TYPE: Tier.A,
+    ConstructTag.RAISE_APPLICATION_ERROR: Tier.A,
     # Tier B (mechanical but context-dependent)
-    ConstructTag.CONNECT_BY:                   Tier.B,
-    ConstructTag.MERGE:                        Tier.B,
-    ConstructTag.GLOBAL_TEMP_TABLE:            Tier.B,
-    ConstructTag.EXECUTE_IMMEDIATE:            Tier.B,
-    ConstructTag.BULK_COLLECT:                 Tier.B,
-    ConstructTag.FORALL:                       Tier.B,
-    ConstructTag.OUTER_JOIN_PLUS:              Tier.B,
-    ConstructTag.PRAGMA_EXCEPTION_INIT:        Tier.B,
-    ConstructTag.HIERARCHICAL_PSEUDOCOLUMN:    Tier.B,
-    ConstructTag.ROWNUM:                       Tier.B,
-    ConstructTag.ROWID:                        Tier.B,
-    ConstructTag.REF_CURSOR:                   Tier.B,
+    ConstructTag.CONNECT_BY: Tier.B,
+    ConstructTag.MERGE: Tier.B,
+    ConstructTag.GLOBAL_TEMP_TABLE: Tier.B,
+    ConstructTag.EXECUTE_IMMEDIATE: Tier.B,
+    ConstructTag.BULK_COLLECT: Tier.B,
+    ConstructTag.FORALL: Tier.B,
+    ConstructTag.OUTER_JOIN_PLUS: Tier.B,
+    ConstructTag.PRAGMA_EXCEPTION_INIT: Tier.B,
+    ConstructTag.HIERARCHICAL_PSEUDOCOLUMN: Tier.B,
+    ConstructTag.ROWNUM: Tier.B,
+    ConstructTag.ROWID: Tier.B,
+    ConstructTag.REF_CURSOR: Tier.B,
     # Tier C (requires architectural change or extension install)
-    ConstructTag.AUTONOMOUS_TXN:               Tier.C,
-    ConstructTag.DBMS_SCHEDULER:               Tier.C,
-    ConstructTag.DBMS_AQ:                      Tier.C,
-    ConstructTag.DBMS_CRYPTO:                  Tier.C,
-    ConstructTag.UTL_FILE:                     Tier.C,
-    ConstructTag.UTL_HTTP:                     Tier.C,
-    ConstructTag.DBLINK:                       Tier.C,
-    ConstructTag.SPATIAL:                      Tier.C,
-    ConstructTag.ORACLE_TEXT:                  Tier.C,
-    ConstructTag.OBJECT_TYPE:                  Tier.C,
-    ConstructTag.NESTED_TABLE:                 Tier.C,
-    ConstructTag.PIPELINED_FUNCTION:           Tier.C,
-    ConstructTag.EXTERNAL_PROCEDURE:           Tier.C,
-    ConstructTag.VPD_POLICY:                   Tier.C,
+    ConstructTag.AUTONOMOUS_TXN: Tier.C,
+    ConstructTag.DBMS_SCHEDULER: Tier.C,
+    ConstructTag.DBMS_AQ: Tier.C,
+    ConstructTag.DBMS_CRYPTO: Tier.C,
+    ConstructTag.UTL_FILE: Tier.C,
+    ConstructTag.UTL_HTTP: Tier.C,
+    ConstructTag.DBLINK: Tier.C,
+    ConstructTag.SPATIAL: Tier.C,
+    ConstructTag.ORACLE_TEXT: Tier.C,
+    ConstructTag.OBJECT_TYPE: Tier.C,
+    ConstructTag.NESTED_TABLE: Tier.C,
+    ConstructTag.PIPELINED_FUNCTION: Tier.C,
+    ConstructTag.EXTERNAL_PROCEDURE: Tier.C,
+    ConstructTag.VPD_POLICY: Tier.C,
 }

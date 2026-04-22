@@ -1,4 +1,5 @@
 """Tests for the token usage / cost summary endpoint."""
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -23,6 +24,7 @@ def reset_ledger():
 @pytest.fixture
 def client():
     from src.api.routes.usage import router
+
     app = FastAPI()
     app.include_router(router)
     return TestClient(app)
@@ -60,14 +62,22 @@ class TestEstimateCost:
         assert estimate_cost(u) == 18.0
 
     def test_cache_read_is_cheaper_than_input(self):
-        u = TokenUsage(model="claude-sonnet-4-6", input_tokens=0, output_tokens=0,
-                       cache_read_input_tokens=1_000_000)
+        u = TokenUsage(
+            model="claude-sonnet-4-6",
+            input_tokens=0,
+            output_tokens=0,
+            cache_read_input_tokens=1_000_000,
+        )
         # Cache read = $0.30 for sonnet (vs $3 base input).
         assert estimate_cost(u) == 0.30
 
     def test_cache_write_is_more_expensive_than_input(self):
-        u = TokenUsage(model="claude-sonnet-4-6", input_tokens=0, output_tokens=0,
-                       cache_creation_input_tokens=1_000_000)
+        u = TokenUsage(
+            model="claude-sonnet-4-6",
+            input_tokens=0,
+            output_tokens=0,
+            cache_creation_input_tokens=1_000_000,
+        )
         assert estimate_cost(u) == 3.75
 
     def test_zero_usage_zero_cost(self):
@@ -93,12 +103,27 @@ class TestSummarize:
 
     def test_groups_by_feature(self):
         records = [
-            TokenUsage(model="claude-sonnet-4-6", input_tokens=100, output_tokens=50,
-                       feature="app_impact", latency_ms=200),
-            TokenUsage(model="claude-sonnet-4-6", input_tokens=300, output_tokens=150,
-                       feature="app_impact", latency_ms=400),
-            TokenUsage(model="claude-opus-4-7", input_tokens=500, output_tokens=250,
-                       feature="runbook", latency_ms=1000),
+            TokenUsage(
+                model="claude-sonnet-4-6",
+                input_tokens=100,
+                output_tokens=50,
+                feature="app_impact",
+                latency_ms=200,
+            ),
+            TokenUsage(
+                model="claude-sonnet-4-6",
+                input_tokens=300,
+                output_tokens=150,
+                feature="app_impact",
+                latency_ms=400,
+            ),
+            TokenUsage(
+                model="claude-opus-4-7",
+                input_tokens=500,
+                output_tokens=250,
+                feature="runbook",
+                latency_ms=1000,
+            ),
         ]
         s = summarize(records)
         features = {f.feature: f for f in s.by_feature}
@@ -149,14 +174,24 @@ class TestUsageEndpoint:
         assert body["by_feature"] == []
 
     def test_after_recording_aggregates_correctly(self, client):
-        get_ledger().record(TokenUsage(
-            model="claude-haiku-4-5", input_tokens=1_000_000, output_tokens=1_000_000,
-            feature="app_impact", latency_ms=300,
-        ))
-        get_ledger().record(TokenUsage(
-            model="claude-opus-4-7", input_tokens=100_000, output_tokens=50_000,
-            feature="runbook", latency_ms=2000,
-        ))
+        get_ledger().record(
+            TokenUsage(
+                model="claude-haiku-4-5",
+                input_tokens=1_000_000,
+                output_tokens=1_000_000,
+                feature="app_impact",
+                latency_ms=300,
+            )
+        )
+        get_ledger().record(
+            TokenUsage(
+                model="claude-opus-4-7",
+                input_tokens=100_000,
+                output_tokens=50_000,
+                feature="runbook",
+                latency_ms=2000,
+            )
+        )
 
         resp = client.get("/api/v3/usage/summary")
         assert resp.status_code == 200
@@ -176,8 +211,13 @@ class TestUsageEndpoint:
         resp = client.get("/api/v3/usage/summary")
         body = resp.json()
         for key in (
-            "total_calls", "total_input_tokens", "total_output_tokens",
-            "total_cache_read_tokens", "total_cache_creation_tokens",
-            "total_estimated_cost_usd", "by_feature", "by_model",
+            "total_calls",
+            "total_input_tokens",
+            "total_output_tokens",
+            "total_cache_read_tokens",
+            "total_cache_creation_tokens",
+            "total_estimated_cost_usd",
+            "by_feature",
+            "by_model",
         ):
             assert key in body, f"missing {key}"

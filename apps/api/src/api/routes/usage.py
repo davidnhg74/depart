@@ -10,6 +10,7 @@ Pricing constants are kept here, not in the LLM client, because the
 client cares about correctness while this module cares about $$. Bump
 PRICING when Anthropic publishes new rates.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -31,6 +32,7 @@ router = APIRouter(prefix="/api/v3/usage", tags=["usage"])
 # `claude-sonnet-4-6`. Cache-read is ~10% of base input; cache-write is
 # 25% above base input.
 
+
 @dataclass(frozen=True)
 class Rates:
     input_per_million: float
@@ -41,11 +43,11 @@ class Rates:
 
 PRICING: List[tuple] = [
     # (model-id-prefix, Rates)
-    ("claude-haiku-4",  Rates(0.25,  1.25,  0.025,  0.30)),
-    ("claude-sonnet-4", Rates(3.00, 15.00,  0.30,   3.75)),
-    ("claude-opus-4",   Rates(15.00, 75.00, 1.50,   18.75)),
+    ("claude-haiku-4", Rates(0.25, 1.25, 0.025, 0.30)),
+    ("claude-sonnet-4", Rates(3.00, 15.00, 0.30, 3.75)),
+    ("claude-opus-4", Rates(15.00, 75.00, 1.50, 18.75)),
 ]
-FALLBACK_RATES = Rates(3.00, 15.00, 0.30, 3.75)      # mid-tier guess
+FALLBACK_RATES = Rates(3.00, 15.00, 0.30, 3.75)  # mid-tier guess
 
 
 def rates_for(model: str) -> Rates:
@@ -59,10 +61,10 @@ def estimate_cost(usage: TokenUsage) -> float:
     """USD cost of one TokenUsage record, rounded to 6 decimals."""
     r = rates_for(usage.model)
     cost = (
-        usage.input_tokens          * r.input_per_million          +
-        usage.output_tokens         * r.output_per_million         +
-        usage.cache_read_input_tokens     * r.cache_read_per_million +
-        usage.cache_creation_input_tokens * r.cache_write_per_million
+        usage.input_tokens * r.input_per_million
+        + usage.output_tokens * r.output_per_million
+        + usage.cache_read_input_tokens * r.cache_read_per_million
+        + usage.cache_creation_input_tokens * r.cache_write_per_million
     ) / 1_000_000.0
     return round(cost, 6)
 
@@ -132,16 +134,18 @@ def _aggregate_by_feature(records: List[TokenUsage]) -> List[FeatureUsageDTO]:
     out: List[FeatureUsageDTO] = []
     for feature, rs in sorted(buckets.items()):
         total_latency = sum(r.latency_ms for r in rs)
-        out.append(FeatureUsageDTO(
-            feature=feature,
-            calls=len(rs),
-            input_tokens=sum(r.input_tokens for r in rs),
-            output_tokens=sum(r.output_tokens for r in rs),
-            cache_read_input_tokens=sum(r.cache_read_input_tokens for r in rs),
-            cache_creation_input_tokens=sum(r.cache_creation_input_tokens for r in rs),
-            avg_latency_ms=round(total_latency / len(rs), 2) if rs else 0.0,
-            estimated_cost_usd=round(sum(estimate_cost(r) for r in rs), 6),
-        ))
+        out.append(
+            FeatureUsageDTO(
+                feature=feature,
+                calls=len(rs),
+                input_tokens=sum(r.input_tokens for r in rs),
+                output_tokens=sum(r.output_tokens for r in rs),
+                cache_read_input_tokens=sum(r.cache_read_input_tokens for r in rs),
+                cache_creation_input_tokens=sum(r.cache_creation_input_tokens for r in rs),
+                avg_latency_ms=round(total_latency / len(rs), 2) if rs else 0.0,
+                estimated_cost_usd=round(sum(estimate_cost(r) for r in rs), 6),
+            )
+        )
     return out
 
 
@@ -151,11 +155,13 @@ def _aggregate_by_model(records: List[TokenUsage]) -> List[ModelUsageDTO]:
         buckets.setdefault(r.model, []).append(r)
     out: List[ModelUsageDTO] = []
     for model, rs in sorted(buckets.items()):
-        out.append(ModelUsageDTO(
-            model=model,
-            calls=len(rs),
-            input_tokens=sum(r.input_tokens for r in rs),
-            output_tokens=sum(r.output_tokens for r in rs),
-            estimated_cost_usd=round(sum(estimate_cost(r) for r in rs), 6),
-        ))
+        out.append(
+            ModelUsageDTO(
+                model=model,
+                calls=len(rs),
+                input_tokens=sum(r.input_tokens for r in rs),
+                output_tokens=sum(r.output_tokens for r in rs),
+                estimated_cost_usd=round(sum(estimate_cost(r) for r in rs), 6),
+            )
+        )
     return out

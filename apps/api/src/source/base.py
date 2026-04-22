@@ -4,6 +4,7 @@ Every source dialect (Oracle today; MySQL, MSSQL tomorrow) implements the
 `Parser` protocol. Consumers (analyze, transforms, AI services) depend only
 on this interface — they never branch on dialect.
 """
+
 from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
@@ -24,5 +25,4 @@ class Parser(Protocol):
     dialect: str
     """Lowercase dialect identifier, e.g. 'oracle'."""
 
-    def parse(self, source: str, *, name: str = "<inline>") -> Module:
-        ...
+    def parse(self, source: str, *, name: str = "<inline>") -> Module: ...

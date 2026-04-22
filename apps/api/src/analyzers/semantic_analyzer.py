@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 class IssueSeverity(str, Enum):
     """Severity level for semantic issues."""
+
     INFO = "INFO"
     WARNING = "WARNING"
     ERROR = "ERROR"
@@ -23,6 +24,7 @@ class IssueSeverity(str, Enum):
 
 class IssueType(str, Enum):
     """Type of semantic issue detected."""
+
     PRECISION_LOSS = "PRECISION_LOSS"
     DATE_BEHAVIOR = "DATE_BEHAVIOR"
     TYPE_COERCION = "TYPE_COERCION"
@@ -35,11 +37,12 @@ class IssueType(str, Enum):
 @dataclass
 class SemanticIssue:
     """A single semantic issue detected in type mapping."""
+
     severity: IssueSeverity
     issue_type: IssueType
-    affected_object: str       # e.g., "ORDERS.AMOUNT"
-    oracle_type: str           # e.g., "NUMBER(12,2)"
-    pg_type: str               # e.g., "NUMERIC(10,2)"
+    affected_object: str  # e.g., "ORDERS.AMOUNT"
+    oracle_type: str  # e.g., "NUMBER(12,2)"
+    pg_type: str  # e.g., "NUMERIC(10,2)"
     description: str
     recommendation: str
 
@@ -47,8 +50,9 @@ class SemanticIssue:
 @dataclass
 class SemanticAnalysisResult:
     """Result of semantic analysis."""
+
     issues: List[SemanticIssue] = field(default_factory=list)
-    mode: str = "static"       # "static" | "live"
+    mode: str = "static"  # "static" | "live"
     analyzed_objects: int = 0
     error: Optional[str] = None
 
@@ -105,12 +109,14 @@ class StaticDDLExtractor:
                 )
                 if pg_col_name:
                     pg_type = pg_cols[pg_col_name]
-                    mappings.append({
-                        "table": table_name,
-                        "column": oracle_col_name,
-                        "oracle_type": oracle_type,
-                        "pg_type": pg_type,
-                    })
+                    mappings.append(
+                        {
+                            "table": table_name,
+                            "column": oracle_col_name,
+                            "oracle_type": oracle_type,
+                            "pg_type": pg_type,
+                        }
+                    )
 
         return mappings
 
@@ -190,15 +196,17 @@ class SemanticAnalyzer:
             issues = []
             for issue_dict in raw_issues:
                 try:
-                    issues.append(SemanticIssue(
-                        severity=IssueSeverity(issue_dict["severity"]),
-                        issue_type=IssueType(issue_dict["issue_type"]),
-                        affected_object=issue_dict["affected_object"],
-                        oracle_type=issue_dict["oracle_type"],
-                        pg_type=issue_dict["pg_type"],
-                        description=issue_dict["description"],
-                        recommendation=issue_dict["recommendation"],
-                    ))
+                    issues.append(
+                        SemanticIssue(
+                            severity=IssueSeverity(issue_dict["severity"]),
+                            issue_type=IssueType(issue_dict["issue_type"]),
+                            affected_object=issue_dict["affected_object"],
+                            oracle_type=issue_dict["oracle_type"],
+                            pg_type=issue_dict["pg_type"],
+                            description=issue_dict["description"],
+                            recommendation=issue_dict["recommendation"],
+                        )
+                    )
                 except (KeyError, ValueError) as e:
                     logger.warning(f"Failed to parse issue: {issue_dict}: {e}")
                     continue
@@ -245,15 +253,17 @@ class SemanticAnalyzer:
             issues = []
             for issue_dict in raw_issues:
                 try:
-                    issues.append(SemanticIssue(
-                        severity=IssueSeverity(issue_dict["severity"]),
-                        issue_type=IssueType(issue_dict["issue_type"]),
-                        affected_object=issue_dict["affected_object"],
-                        oracle_type=issue_dict["oracle_type"],
-                        pg_type=issue_dict["pg_type"],
-                        description=issue_dict["description"],
-                        recommendation=issue_dict["recommendation"],
-                    ))
+                    issues.append(
+                        SemanticIssue(
+                            severity=IssueSeverity(issue_dict["severity"]),
+                            issue_type=IssueType(issue_dict["issue_type"]),
+                            affected_object=issue_dict["affected_object"],
+                            oracle_type=issue_dict["oracle_type"],
+                            pg_type=issue_dict["pg_type"],
+                            description=issue_dict["description"],
+                            recommendation=issue_dict["recommendation"],
+                        )
+                    )
                 except (KeyError, ValueError) as e:
                     logger.warning(f"Failed to parse issue: {issue_dict}: {e}")
                     continue
@@ -279,21 +289,20 @@ class SemanticAnalyzer:
         Inner join on (table_name, column_name) case-insensitively.
         Returns list of {table, column, oracle_type, pg_type}.
         """
-        pg_index = {
-            (r["table_name"].upper(), r["column_name"].upper()): r
-            for r in pg
-        }
+        pg_index = {(r["table_name"].upper(), r["column_name"].upper()): r for r in pg}
 
         result = []
         for o in oracle:
             key = (o["table_name"].upper(), o["column_name"].upper())
             if key in pg_index:
                 pg_row = pg_index[key]
-                result.append({
-                    "table": o["table_name"],
-                    "column": o["column_name"],
-                    "oracle_type": o.get("data_type", "UNKNOWN"),
-                    "pg_type": pg_row.get("data_type", "UNKNOWN"),
-                })
+                result.append(
+                    {
+                        "table": o["table_name"],
+                        "column": o["column_name"],
+                        "oracle_type": o.get("data_type", "UNKNOWN"),
+                        "pg_type": pg_row.get("data_type", "UNKNOWN"),
+                    }
+                )
 
         return result

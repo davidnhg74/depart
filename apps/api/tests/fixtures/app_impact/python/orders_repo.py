@@ -11,12 +11,12 @@ JOIN_CUSTOMER = """
 """
 
 # Triple-single-quoted with NVL + ROWNUM — MEDIUM + HIGH.
-RECENT_ORDERS = '''
+RECENT_ORDERS = """
     SELECT id, NVL(notes, '<none>') AS notes
     FROM orders
     WHERE ROWNUM <= 50
     ORDER BY created_at DESC
-'''
+"""
 
 # Comment containing SQL keywords — must NOT be picked up as a fragment.
 # SELECT this should never become a finding because it lives in a comment.

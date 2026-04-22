@@ -1,7 +1,14 @@
 # Cost savings calculator for Oracle → PostgreSQL migrations
 # Helps customers understand ROI and justify project to procurement
 
-from .calculator import CostCalculator, CostAnalysis, OracleCostBreakdown, PostgresCostBreakdown, DatabaseSize, DeploymentType
+from .calculator import (
+    CostCalculator,
+    CostAnalysis,
+    OracleCostBreakdown,
+    PostgresCostBreakdown,
+    DatabaseSize,
+    DeploymentType,
+)
 
 __all__ = [
     "CostCalculator",

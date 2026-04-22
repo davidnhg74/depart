@@ -1,4 +1,5 @@
 """Billing endpoints: Stripe checkout, portal, invoices, webhooks, and plan info."""
+
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel

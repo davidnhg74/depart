@@ -1,4 +1,16 @@
-from sqlalchemy import Column, String, Integer, DateTime, JSON, ForeignKey, Text, Enum, ARRAY, Float, Boolean
+from sqlalchemy import (
+    Column,
+    String,
+    Integer,
+    DateTime,
+    JSON,
+    ForeignKey,
+    Text,
+    Enum,
+    ARRAY,
+    Float,
+    Boolean,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -72,7 +84,9 @@ class MigrationRecord(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     schema_name = Column(String(255), nullable=False)
-    status = Column(String(50), nullable=False, index=True)  # pending, in_progress, completed, failed
+    status = Column(
+        String(50), nullable=False, index=True
+    )  # pending, in_progress, completed, failed
     total_rows = Column(Integer, default=0)
     rows_transferred = Column(Integer, default=0)
     total_bytes = Column(Integer, default=0)
@@ -102,7 +116,9 @@ class MigrationCheckpointRecord(Base):
     __tablename__ = "migration_checkpoints"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    migration_id = Column(UUID(as_uuid=True), ForeignKey("migrations.id"), nullable=False, index=True)
+    migration_id = Column(
+        UUID(as_uuid=True), ForeignKey("migrations.id"), nullable=False, index=True
+    )
     table_name = Column(String(255), nullable=False)
     rows_processed = Column(Integer, default=0)
     total_rows = Column(Integer, default=0)
@@ -148,6 +164,7 @@ class BenchmarkCapture(Base):
 # Phase 4: SaaS Auth & Billing Models
 # ============================================================================
 
+
 class PlanEnum(str, enum.Enum):
     TRIAL = "trial"
     STARTER = "starter"
@@ -188,8 +205,12 @@ class User(Base):
 
     jobs = relationship("AnalysisJob", back_populates="user")
     api_keys = relationship("ApiKey", back_populates="user", cascade="all, delete-orphan")
-    subscriptions = relationship("Subscription", back_populates="user", cascade="all, delete-orphan")
-    support_tickets = relationship("SupportTicket", back_populates="user", cascade="all, delete-orphan")
+    subscriptions = relationship(
+        "Subscription", back_populates="user", cascade="all, delete-orphan"
+    )
+    support_tickets = relationship(
+        "SupportTicket", back_populates="user", cascade="all, delete-orphan"
+    )
 
 
 class ApiKey(Base):
@@ -198,7 +219,9 @@ class ApiKey(Base):
     __tablename__ = "api_keys"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     name = Column(String(255), nullable=False)
     key_hash = Column(String(255), unique=True, nullable=False, index=True)  # SHA-256 hash
     key_prefix = Column(String(8), nullable=False)  # first 8 chars for display
@@ -215,7 +238,9 @@ class Subscription(Base):
     __tablename__ = "subscriptions"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     stripe_subscription_id = Column(String(255), unique=True, nullable=False, index=True)
     plan = Column(Enum(PlanEnum), nullable=False)
     status = Column(String(50), nullable=False)  # active | canceled | past_due
@@ -234,10 +259,16 @@ class SupportTicket(Base):
     __tablename__ = "support_tickets"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    user_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     subject = Column(String(255), nullable=False)
-    status = Column(String(50), default="open", nullable=False)  # open | in_progress | resolved | closed
-    priority = Column(String(50), default="medium", nullable=False)  # low | medium | high | critical
+    status = Column(
+        String(50), default="open", nullable=False
+    )  # open | in_progress | resolved | closed
+    priority = Column(
+        String(50), default="medium", nullable=False
+    )  # low | medium | high | critical
     requester_email = Column(String(255), nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
@@ -252,7 +283,12 @@ class TicketMessage(Base):
     __tablename__ = "ticket_messages"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    ticket_id = Column(UUID(as_uuid=True), ForeignKey("support_tickets.id", ondelete="CASCADE"), nullable=False, index=True)
+    ticket_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("support_tickets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     author_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     is_staff = Column(Boolean, default=False, nullable=False)
     body = Column(Text, nullable=False)
@@ -263,6 +299,7 @@ class TicketMessage(Base):
 
 
 # Pydantic response models (not ORM)
+
 
 class MigrationReport(BaseModel):
     """Migration progress report with conversion statistics."""

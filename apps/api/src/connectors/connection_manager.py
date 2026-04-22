@@ -183,7 +183,10 @@ class ConnectionManager:
                     password=config.password,
                 )
             else:
-                return {"status": "failed", "error": f"Unknown database type: {config.database_type}"}
+                return {
+                    "status": "failed",
+                    "error": f"Unknown database type: {config.database_type}",
+                }
 
             # Test connection
             if not connector.connect():

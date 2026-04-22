@@ -1,4 +1,5 @@
 """Support tickets and contact form endpoints."""
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
@@ -143,9 +144,12 @@ async def list_tickets(
     db: Session = Depends(get_db),
 ):
     """List user's support tickets."""
-    tickets = db.query(SupportTicket).filter(
-        SupportTicket.user_id == current_user.id
-    ).order_by(SupportTicket.created_at.desc()).all()
+    tickets = (
+        db.query(SupportTicket)
+        .filter(SupportTicket.user_id == current_user.id)
+        .order_by(SupportTicket.created_at.desc())
+        .all()
+    )
 
     return [
         TicketResponse(
@@ -169,10 +173,14 @@ async def get_ticket(
     db: Session = Depends(get_db),
 ):
     """Get ticket details with all messages."""
-    ticket = db.query(SupportTicket).filter(
-        SupportTicket.id == ticket_id,
-        SupportTicket.user_id == current_user.id,
-    ).first()
+    ticket = (
+        db.query(SupportTicket)
+        .filter(
+            SupportTicket.id == ticket_id,
+            SupportTicket.user_id == current_user.id,
+        )
+        .first()
+    )
 
     if not ticket:
         raise HTTPException(
@@ -211,10 +219,14 @@ async def add_ticket_message(
     db: Session = Depends(get_db),
 ):
     """Add a reply to a support ticket."""
-    ticket = db.query(SupportTicket).filter(
-        SupportTicket.id == ticket_id,
-        SupportTicket.user_id == current_user.id,
-    ).first()
+    ticket = (
+        db.query(SupportTicket)
+        .filter(
+            SupportTicket.id == ticket_id,
+            SupportTicket.user_id == current_user.id,
+        )
+        .first()
+    )
 
     if not ticket:
         raise HTTPException(
@@ -249,10 +261,14 @@ async def update_ticket_status(
     db: Session = Depends(get_db),
 ):
     """Update ticket status (user can only close their own tickets)."""
-    ticket = db.query(SupportTicket).filter(
-        SupportTicket.id == ticket_id,
-        SupportTicket.user_id == current_user.id,
-    ).first()
+    ticket = (
+        db.query(SupportTicket)
+        .filter(
+            SupportTicket.id == ticket_id,
+            SupportTicket.user_id == current_user.id,
+        )
+        .first()
+    )
 
     if not ticket:
         raise HTTPException(

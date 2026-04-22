@@ -7,6 +7,7 @@ Branded layouts (customer logo, color palette) are a Phase R2 concern.
 Public API: `render(runbook) -> bytes`. Caller decides what to do with
 the bytes (write to disk, return from FastAPI as application/pdf, ...).
 """
+
 from __future__ import annotations
 
 import io
@@ -31,9 +32,9 @@ from ..analyze.app_impact import RiskLevel
 
 # Risk color palette: green / yellow / amber / red.
 _RISK_COLORS = {
-    RiskLevel.LOW.value:      HexColor("#2E7D32"),
-    RiskLevel.MEDIUM.value:   HexColor("#F9A825"),
-    RiskLevel.HIGH.value:     HexColor("#EF6C00"),
+    RiskLevel.LOW.value: HexColor("#2E7D32"),
+    RiskLevel.MEDIUM.value: HexColor("#F9A825"),
+    RiskLevel.HIGH.value: HexColor("#EF6C00"),
     RiskLevel.CRITICAL.value: HexColor("#C62828"),
 }
 
@@ -43,8 +44,10 @@ def render(runbook: Runbook) -> bytes:
     doc = SimpleDocTemplate(
         buf,
         pagesize=LETTER,
-        leftMargin=0.75 * inch, rightMargin=0.75 * inch,
-        topMargin=0.75 * inch, bottomMargin=0.75 * inch,
+        leftMargin=0.75 * inch,
+        rightMargin=0.75 * inch,
+        topMargin=0.75 * inch,
+        bottomMargin=0.75 * inch,
         title=f"Migration Runbook — {runbook.context.customer}",
         author="Depart",
     )
@@ -110,8 +113,7 @@ def _build_story(runbook: Runbook):
     yield HRFlowable(width="100%", thickness=0.5)
     yield Spacer(1, 0.1 * inch)
     if not runbook.blockers:
-        yield Paragraph("No CRITICAL application-impact findings detected.",
-                        styles["Body"])
+        yield Paragraph("No CRITICAL application-impact findings detected.", styles["Body"])
     else:
         for b in runbook.blockers:
             yield Paragraph(
@@ -119,8 +121,7 @@ def _build_story(runbook: Runbook):
                 styles["Body"],
             )
             yield Paragraph(_html_escape(b.message), styles["Body"])
-            yield Paragraph(f"<i>Suggested fix:</i> {_html_escape(b.suggestion)}",
-                            styles["Body"])
+            yield Paragraph(f"<i>Suggested fix:</i> {_html_escape(b.suggestion)}", styles["Body"])
             if b.explanation:
                 yield Paragraph(_html_escape(b.explanation), styles["BodySmall"])
             yield Spacer(1, 0.1 * inch)
@@ -134,18 +135,22 @@ def _build_story(runbook: Runbook):
     for role in runbook.sign_offs:
         sign_off_data.append([role, "", ""])
     t = Table(sign_off_data, colWidths=[3 * inch, 2.5 * inch, 1.5 * inch])
-    t.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), HexColor("#E0E0E0")),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("GRID", (0, 0), (-1, -1), 0.25, HexColor("#9E9E9E")),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [None, HexColor("#FAFAFA")]),
-        ("LEFTPADDING", (0, 0), (-1, -1), 6),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-        ("TOPPADDING", (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-    ]))
+    t.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), HexColor("#E0E0E0")),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("GRID", (0, 0), (-1, -1), 0.25, HexColor("#9E9E9E")),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [None, HexColor("#FAFAFA")]),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ]
+        )
+    )
     yield t
 
 
@@ -153,8 +158,7 @@ def _render_phase(phase: RunbookPhase, styles):
     yield Paragraph(_html_escape(phase.title), styles["H2"])
     chip = _risk_chip(phase.risk_level.value, styles)
     yield Paragraph(
-        f"{chip} &nbsp;&nbsp; <i>Estimated duration: "
-        f"{phase.duration_days} engineer-day(s)</i>",
+        f"{chip} &nbsp;&nbsp; <i>Estimated duration: " f"{phase.duration_days} engineer-day(s)</i>",
         styles["Footnote"],
     )
     yield Spacer(1, 0.05 * inch)
@@ -196,19 +200,23 @@ def _effort_summary(runbook: Runbook, styles):
         ["Estimated cost", f"${cost:,}"],
     ]
     t = Table(data, colWidths=[3 * inch, 3 * inch])
-    t.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), HexColor("#E0E0E0")),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
-        ("BACKGROUND", (0, -1), (-1, -1), HexColor("#FFF8E1")),
-        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("GRID", (0, 0), (-1, -1), 0.25, HexColor("#9E9E9E")),
-        ("LEFTPADDING", (0, 0), (-1, -1), 6),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-    ]))
+    t.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), HexColor("#E0E0E0")),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+                ("BACKGROUND", (0, -1), (-1, -1), HexColor("#FFF8E1")),
+                ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("GRID", (0, 0), (-1, -1), 0.25, HexColor("#9E9E9E")),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
+    )
     yield t
 
 
@@ -216,20 +224,15 @@ def _risk_chip(risk_value: str, styles) -> str:
     color = _RISK_COLORS.get(risk_value, HexColor("#616161"))
     # ReportLab's inline <font color="..."> needs a leading '#'.
     hex6 = color.hexval()[2:].rjust(6, "0")
-    return (
-        f'<font color="#{hex6}" size="9"><b>'
-        f"{risk_value.upper()} RISK</b></font>"
-    )
+    return f'<font color="#{hex6}" size="9"><b>' f"{risk_value.upper()} RISK</b></font>"
 
 
 def _page_chrome(canvas, doc):
     canvas.saveState()
     canvas.setFont("Helvetica", 8)
     canvas.setFillColor(HexColor("#757575"))
-    canvas.drawString(0.75 * inch, 0.5 * inch,
-                      "Depart Migration Runbook — Confidential")
-    canvas.drawRightString(LETTER[0] - 0.75 * inch, 0.5 * inch,
-                           f"Page {doc.page}")
+    canvas.drawString(0.75 * inch, 0.5 * inch, "Depart Migration Runbook — Confidential")
+    canvas.drawRightString(LETTER[0] - 0.75 * inch, 0.5 * inch, f"Page {doc.page}")
     canvas.restoreState()
 
 
@@ -237,40 +240,65 @@ def _styles():
     base = getSampleStyleSheet()
     return {
         "Title": ParagraphStyle(
-            "Title", parent=base["Title"], fontSize=24,
-            textColor=HexColor("#212121"), spaceAfter=8,
+            "Title",
+            parent=base["Title"],
+            fontSize=24,
+            textColor=HexColor("#212121"),
+            spaceAfter=8,
         ),
         "Subtitle": ParagraphStyle(
-            "Subtitle", parent=base["Heading2"], fontSize=14,
-            textColor=HexColor("#424242"), spaceAfter=20,
+            "Subtitle",
+            parent=base["Heading2"],
+            fontSize=14,
+            textColor=HexColor("#424242"),
+            spaceAfter=20,
         ),
         "H1": ParagraphStyle(
-            "H1", parent=base["Heading1"], fontSize=16,
-            textColor=HexColor("#1565C0"), spaceBefore=8, spaceAfter=4,
+            "H1",
+            parent=base["Heading1"],
+            fontSize=16,
+            textColor=HexColor("#1565C0"),
+            spaceBefore=8,
+            spaceAfter=4,
         ),
         "H2": ParagraphStyle(
-            "H2", parent=base["Heading2"], fontSize=13,
-            textColor=HexColor("#212121"), spaceBefore=8, spaceAfter=2,
+            "H2",
+            parent=base["Heading2"],
+            fontSize=13,
+            textColor=HexColor("#212121"),
+            spaceBefore=8,
+            spaceAfter=2,
         ),
         "H3": ParagraphStyle(
-            "H3", parent=base["Heading3"], fontSize=10,
-            textColor=HexColor("#424242"), spaceBefore=6, spaceAfter=2,
+            "H3",
+            parent=base["Heading3"],
+            fontSize=10,
+            textColor=HexColor("#424242"),
+            spaceBefore=6,
+            spaceAfter=2,
         ),
         "Body": ParagraphStyle(
-            "Body", parent=base["BodyText"], fontSize=10, leading=14,
+            "Body",
+            parent=base["BodyText"],
+            fontSize=10,
+            leading=14,
         ),
         "BodySmall": ParagraphStyle(
-            "BodySmall", parent=base["BodyText"], fontSize=9, leading=12,
+            "BodySmall",
+            parent=base["BodyText"],
+            fontSize=9,
+            leading=12,
             leftIndent=12,
         ),
         "Footnote": ParagraphStyle(
-            "Footnote", parent=base["BodyText"], fontSize=8, leading=10,
+            "Footnote",
+            parent=base["BodyText"],
+            fontSize=8,
+            leading=10,
             textColor=HexColor("#616161"),
         ),
     }
 
 
 def _html_escape(text: str) -> str:
-    return (text.replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;"))
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")

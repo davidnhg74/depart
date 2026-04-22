@@ -7,7 +7,9 @@ class Settings(BaseSettings):
     model_config = ConfigDict(env_file=".env", extra="allow")
 
     # Database
-    database_url: str = os.getenv("DATABASE_URL", "postgresql://depart:depart_dev_pw@localhost:5432/depart_dev")
+    database_url: str = os.getenv(
+        "DATABASE_URL", "postgresql://depart:depart_dev_pw@localhost:5432/depart_dev"
+    )
 
     # Environment
     environment: str = os.getenv("ENVIRONMENT", "development")

@@ -13,14 +13,16 @@ logger = logging.getLogger(__name__)
 
 class DatabaseSize(str, Enum):
     """Database size categories."""
-    SMALL = "small"          # < 100 GB
-    MEDIUM = "medium"        # 100 GB - 1 TB
-    LARGE = "large"          # 1 TB - 10 TB
+
+    SMALL = "small"  # < 100 GB
+    MEDIUM = "medium"  # 100 GB - 1 TB
+    LARGE = "large"  # 1 TB - 10 TB
     ENTERPRISE = "enterprise"  # > 10 TB
 
 
 class DeploymentType(str, Enum):
     """Deployment type."""
+
     ONPREM = "onprem"
     CLOUD_AWS = "cloud_aws"
     CLOUD_AZURE = "cloud_azure"
@@ -29,6 +31,7 @@ class DeploymentType(str, Enum):
 
 class OracleCostBreakdown(BaseModel):
     """Breakdown of Oracle costs."""
+
     license_cost_per_year: float
     support_cost_per_year: float
     infrastructure_cost_per_year: float
@@ -39,6 +42,7 @@ class OracleCostBreakdown(BaseModel):
 
 class PostgresCostBreakdown(BaseModel):
     """Breakdown of PostgreSQL costs."""
+
     license_cost_per_year: float
     support_cost_per_year: float
     infrastructure_cost_per_year: float
@@ -49,6 +53,7 @@ class PostgresCostBreakdown(BaseModel):
 
 class MigrationCosts(BaseModel):
     """Migration-related costs (one-time)."""
+
     depart_license_fee: float  # Depart migration service
     dba_consulting_hours: int
     dba_consulting_cost: float
@@ -61,6 +66,7 @@ class MigrationCosts(BaseModel):
 
 class CostAnalysis(BaseModel):
     """Complete cost analysis and ROI."""
+
     oracle_breakdown: OracleCostBreakdown
     postgres_breakdown: PostgresCostBreakdown
     migration_costs: MigrationCosts
@@ -100,9 +106,9 @@ class CostCalculator:
 
     # Cloud infrastructure (AWS pricing, 2026)
     AWS_DATABASE_MONTHLY = {
-        DatabaseSize.SMALL: 1_000,      # < 100 GB
-        DatabaseSize.MEDIUM: 5_000,     # 100 GB - 1 TB
-        DatabaseSize.LARGE: 20_000,     # 1 TB - 10 TB
+        DatabaseSize.SMALL: 1_000,  # < 100 GB
+        DatabaseSize.MEDIUM: 5_000,  # 100 GB - 1 TB
+        DatabaseSize.LARGE: 20_000,  # 1 TB - 10 TB
         DatabaseSize.ENTERPRISE: 50_000,  # > 10 TB
     }
 
@@ -152,14 +158,10 @@ class CostCalculator:
 
         # Infrastructure (cloud or on-prem)
         if self.deployment_type == DeploymentType.ONPREM:
-            infra_cost = self.ONPREM_INFRASTRUCTURE_ANNUAL.get(
-                self.database_size, 50_000
-            )
+            infra_cost = self.ONPREM_INFRASTRUCTURE_ANNUAL.get(self.database_size, 50_000)
         else:
             # Cloud: use AWS as baseline
-            monthly_cost = self.AWS_DATABASE_MONTHLY.get(
-                self.database_size, 20_000
-            )
+            monthly_cost = self.AWS_DATABASE_MONTHLY.get(self.database_size, 20_000)
             infra_cost = monthly_cost * 12
 
         # Storage (often separate line item)
@@ -192,15 +194,11 @@ class CostCalculator:
 
         # Infrastructure: 30-40% cheaper than Oracle
         if self.deployment_type == DeploymentType.ONPREM:
-            oracle_infra = self.ONPREM_INFRASTRUCTURE_ANNUAL.get(
-                self.database_size, 50_000
-            )
+            oracle_infra = self.ONPREM_INFRASTRUCTURE_ANNUAL.get(self.database_size, 50_000)
             infra_cost = oracle_infra * 0.35  # 35% of Oracle cost
         else:
             # Cloud: PostgreSQL RDS is cheaper
-            monthly_base = self.AWS_DATABASE_MONTHLY.get(
-                self.database_size, 20_000
-            )
+            monthly_base = self.AWS_DATABASE_MONTHLY.get(self.database_size, 20_000)
             infra_cost = monthly_base * 12 * 0.40  # 40% of Oracle cloud cost
 
         # Storage: PostgreSQL more efficient (30% less)
@@ -312,13 +310,13 @@ class CostCalculator:
             payback_months = 0
 
         # ROI (5 year perspective)
-        five_year_postgres_cost = (
-            postgres.total_annual_cost * 5 + migration.total_migration_cost
-        )
+        five_year_postgres_cost = postgres.total_annual_cost * 5 + migration.total_migration_cost
         five_year_oracle_cost = oracle.total_annual_cost * 5
         five_year_savings = five_year_oracle_cost - five_year_postgres_cost
 
-        roi_percent = (five_year_savings / five_year_oracle_cost) * 100 if five_year_oracle_cost > 0 else 0
+        roi_percent = (
+            (five_year_savings / five_year_oracle_cost) * 100 if five_year_oracle_cost > 0 else 0
+        )
 
         return CostAnalysis(
             oracle_breakdown=oracle,

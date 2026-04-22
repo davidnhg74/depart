@@ -1,4 +1,5 @@
 """Stripe billing service - handle subscriptions, checkout, webhooks."""
+
 import logging
 from datetime import datetime
 from typing import Optional, Dict, Any
@@ -11,6 +12,7 @@ logger = logging.getLogger(__name__)
 # Try to import stripe
 try:
     import stripe
+
     stripe.api_key = settings.stripe_secret_key
     STRIPE_AVAILABLE = bool(settings.stripe_secret_key)
 except ImportError:
@@ -31,7 +33,9 @@ def get_plan_limits(plan: str) -> dict:
     return PLAN_LIMITS.get(plan, PLAN_LIMITS["trial"])
 
 
-def create_checkout_session(user: User, plan: str, success_url: str, cancel_url: str) -> Optional[str]:
+def create_checkout_session(
+    user: User, plan: str, success_url: str, cancel_url: str
+) -> Optional[str]:
     """Create a Stripe Checkout session for plan upgrade."""
     if not STRIPE_AVAILABLE:
         logger.warning("Stripe not configured; cannot create checkout session")
@@ -194,12 +198,16 @@ def handle_subscription_updated(event: Dict[str, Any], db: Session) -> bool:
         user.subscription_status = subscription["status"]
 
         # Update subscription record
-        sub_record = db.query(Subscription).filter(
-            Subscription.stripe_subscription_id == subscription["id"]
-        ).first()
+        sub_record = (
+            db.query(Subscription)
+            .filter(Subscription.stripe_subscription_id == subscription["id"])
+            .first()
+        )
         if sub_record:
             sub_record.status = subscription["status"]
-            sub_record.current_period_end = datetime.fromtimestamp(subscription["current_period_end"])
+            sub_record.current_period_end = datetime.fromtimestamp(
+                subscription["current_period_end"]
+            )
             sub_record.updated_at = datetime.utcnow()
 
         db.commit()
@@ -228,9 +236,11 @@ def handle_subscription_deleted(event: Dict[str, Any], db: Session) -> bool:
         user.stripe_subscription_id = None
 
         # Update subscription record
-        sub_record = db.query(Subscription).filter(
-            Subscription.stripe_subscription_id == subscription["id"]
-        ).first()
+        sub_record = (
+            db.query(Subscription)
+            .filter(Subscription.stripe_subscription_id == subscription["id"])
+            .first()
+        )
         if sub_record:
             sub_record.status = "canceled"
             sub_record.canceled_at = datetime.utcnow()
@@ -253,9 +263,7 @@ def verify_webhook_signature(body: bytes, signature: str) -> Optional[Dict[str, 
         return None
 
     try:
-        event = stripe.Webhook.construct_event(
-            body, signature, settings.stripe_webhook_secret
-        )
+        event = stripe.Webhook.construct_event(body, signature, settings.stripe_webhook_secret)
         return event
     except ValueError:
         logger.error("Invalid webhook payload")

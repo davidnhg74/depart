@@ -18,6 +18,7 @@ from .models import Lead, AnalysisJob, JobStatus, User
 from .config import settings
 from .analyze.complexity import ComplexityScorer
 from .reports.pdf_generator import PDFReportGenerator
+
 try:
     from .rag import ConversionCaseStore, EmbeddingGenerator
 except ImportError:
@@ -75,6 +76,7 @@ class JobResponse(BaseModel):
 # ============================================================================
 # Phase 3.3: HITL Workflow, Permissions, and Benchmarking Models
 # ============================================================================
+
 
 class PermissionAnalysisRequest(BaseModel):
     oracle_connection_id: Optional[str] = None
@@ -138,6 +140,7 @@ class BenchmarkComparisonResponse(BaseModel):
 # ============================================================================
 # Phase 3.3: Connection Management Models
 # ============================================================================
+
 
 class ConnectionTestRequest(BaseModel):
     database_type: str  # "oracle" or "postgres"
@@ -221,7 +224,7 @@ async def analyze(
         if file_size > settings.max_upload_size:
             raise HTTPException(
                 status_code=400,
-                detail=f"File too large. Max size: {settings.max_upload_size} bytes"
+                detail=f"File too large. Max size: {settings.max_upload_size} bytes",
             )
 
         # Get or create lead
@@ -246,11 +249,11 @@ async def analyze(
         # Extract and analyze
         try:
             all_content = ""
-            with zipfile.ZipFile(file_path, 'r') as zip_ref:
+            with zipfile.ZipFile(file_path, "r") as zip_ref:
                 for file_info in zip_ref.filelist:
-                    if file_info.filename.endswith(('.sql', '.pls', '.plsql', '.txt')):
+                    if file_info.filename.endswith((".sql", ".pls", ".plsql", ".txt")):
                         try:
-                            content = zip_ref.read(file_info).decode('utf-8', errors='ignore')
+                            content = zip_ref.read(file_info).decode("utf-8", errors="ignore")
                             all_content += content + "\n"
                         except Exception:
                             pass
@@ -348,9 +351,7 @@ async def get_pdf_report(job_id: str, db: Session = Depends(get_db)):
             raise HTTPException(status_code=404, detail="PDF report not found")
 
         return FileResponse(
-            job.pdf_path,
-            media_type="application/pdf",
-            filename=f"depart_analysis_{job_id}.pdf"
+            job.pdf_path, media_type="application/pdf", filename=f"depart_analysis_{job_id}.pdf"
         )
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid job ID format")
@@ -365,6 +366,7 @@ async def get_pdf_report(job_id: str, db: Session = Depends(get_db)):
 # ============================================================================
 # Phase 3.1: RAG System Endpoints
 # ============================================================================
+
 
 class StoreConversionCaseRequest(BaseModel):
     construct_type: str
@@ -436,9 +438,7 @@ async def get_similar_cases(
         ]
 
         avg_success = (
-            sum(c["success_rate"] for c in case_dicts) / len(case_dicts)
-            if case_dicts
-            else 0.0
+            sum(c["success_rate"] for c in case_dicts) / len(case_dicts) if case_dicts else 0.0
         )
 
         return RAGContextResponse(
@@ -467,6 +467,7 @@ async def get_pattern_statistics(construct_type: str, db: Session = Depends(get_
 # ============================================================================
 # Cost Savings Calculator
 # ============================================================================
+
 
 class CostAnalysisRequest(BaseModel):
     database_size: str  # "small", "medium", "large", "enterprise"
@@ -514,6 +515,7 @@ async def analyze_migration_costs(request: CostAnalysisRequest) -> dict:
 # ============================================================================
 # Semantic Error Detection
 # ============================================================================
+
 
 class SemanticAnalysisRequest(BaseModel):
     oracle_ddl: Optional[str] = None
@@ -580,20 +582,24 @@ async def analyze_semantic(request: SemanticAnalysisRequest) -> SemanticAnalysis
 
         # Build severity summary
         from collections import Counter
+
         counts = Counter(i.severity for i in result.issues)
 
         return SemanticAnalysisResponse(
             mode=result.mode,
             analyzed_objects=result.analyzed_objects,
-            issues=[SemanticIssueResponse(
-                severity=i.severity,
-                issue_type=i.issue_type,
-                affected_object=i.affected_object,
-                oracle_type=i.oracle_type,
-                pg_type=i.pg_type,
-                description=i.description,
-                recommendation=i.recommendation,
-            ) for i in result.issues],
+            issues=[
+                SemanticIssueResponse(
+                    severity=i.severity,
+                    issue_type=i.issue_type,
+                    affected_object=i.affected_object,
+                    oracle_type=i.oracle_type,
+                    pg_type=i.pg_type,
+                    description=i.description,
+                    recommendation=i.recommendation,
+                )
+                for i in result.issues
+            ],
             summary={
                 "critical": counts.get("CRITICAL", 0),
                 "error": counts.get("ERROR", 0),
@@ -612,6 +618,7 @@ async def analyze_semantic(request: SemanticAnalysisRequest) -> SemanticAnalysis
 # ============================================================================
 # Phase 3.2: Data Migration Orchestration Endpoints
 # ============================================================================
+
 
 class MigrationStatusResponse(BaseModel):
     migration_id: str
@@ -640,9 +647,9 @@ async def get_migration_status(migration_id: str, db: Session = Depends(get_db))
     try:
         from .models import MigrationRecord
 
-        migration = db.query(MigrationRecord).filter(
-            MigrationRecord.id == uuid.UUID(migration_id)
-        ).first()
+        migration = (
+            db.query(MigrationRecord).filter(MigrationRecord.id == uuid.UUID(migration_id)).first()
+        )
 
         if not migration:
             raise HTTPException(status_code=404, detail="Migration not found")
@@ -690,21 +697,25 @@ async def get_migration_report(migration_id: str, db: Session = Depends(get_db))
     try:
         from .models import MigrationRecord, MigrationCheckpointRecord
 
-        migration = db.query(MigrationRecord).filter(
-            MigrationRecord.id == uuid.UUID(migration_id)
-        ).first()
+        migration = (
+            db.query(MigrationRecord).filter(MigrationRecord.id == uuid.UUID(migration_id)).first()
+        )
 
         if not migration:
             raise HTTPException(status_code=404, detail="Migration not found")
 
         # Get all checkpoints for this migration
-        checkpoints = db.query(MigrationCheckpointRecord).filter(
-            MigrationCheckpointRecord.migration_id == uuid.UUID(migration_id)
-        ).all()
+        checkpoints = (
+            db.query(MigrationCheckpointRecord)
+            .filter(MigrationCheckpointRecord.migration_id == uuid.UUID(migration_id))
+            .all()
+        )
 
         # Calculate conversion statistics
         total_tables = len(checkpoints) if checkpoints else 0
-        completed_tables = sum(1 for cp in checkpoints if cp.status == "completed") if checkpoints else 0
+        completed_tables = (
+            sum(1 for cp in checkpoints if cp.status == "completed") if checkpoints else 0
+        )
         conversion_percentage = (completed_tables / total_tables * 100) if total_tables > 0 else 0.0
 
         # Count tests generated (assuming 1 test per completed checkpoint for now)
@@ -721,10 +732,12 @@ async def get_migration_report(migration_id: str, db: Session = Depends(get_db))
         blockers = []
         for cp in checkpoints:
             if cp.error_message:
-                blockers.append({
-                    "name": cp.table_name,
-                    "reason": cp.error_message,
-                })
+                blockers.append(
+                    {
+                        "name": cp.table_name,
+                        "reason": cp.error_message,
+                    }
+                )
 
         return MigrationReport(
             migration_id=migration_id,
@@ -749,6 +762,7 @@ async def get_migration_report(migration_id: str, db: Session = Depends(get_db))
 # Phase 3.3: Permission Analysis Endpoints
 # ============================================================================
 
+
 @app.post("/api/v3/analyze/permissions")
 async def analyze_permissions(request: PermissionAnalysisRequest, db: Session = Depends(get_db)):
     """
@@ -763,24 +777,35 @@ async def analyze_permissions(request: PermissionAnalysisRequest, db: Session = 
             result = analyzer.analyze_from_json(request.oracle_privileges_json)
         elif request.oracle_connection_id:
             # TODO: Get connection from connection manager
-            raise HTTPException(status_code=501, detail="Direct connection analysis not yet implemented")
+            raise HTTPException(
+                status_code=501, detail="Direct connection analysis not yet implemented"
+            )
         else:
-            raise HTTPException(status_code=400, detail="Either oracle_connection_id or oracle_privileges_json required")
+            raise HTTPException(
+                status_code=400,
+                detail="Either oracle_connection_id or oracle_privileges_json required",
+            )
 
         return PermissionAnalysisResponse(
-            mappings=[{
-                "oracle_privilege": m.oracle_privilege,
-                "pg_equivalent": m.pg_equivalent,
-                "risk_level": m.risk_level,
-                "recommendation": m.recommendation,
-                "grant_sql": m.grant_sql,
-            } for m in result.mappings],
-            unmappable=[{
-                "oracle_privilege": u.oracle_privilege,
-                "reason": u.reason,
-                "workaround": u.workaround,
-                "risk_level": u.risk_level,
-            } for u in result.unmappable],
+            mappings=[
+                {
+                    "oracle_privilege": m.oracle_privilege,
+                    "pg_equivalent": m.pg_equivalent,
+                    "risk_level": m.risk_level,
+                    "recommendation": m.recommendation,
+                    "grant_sql": m.grant_sql,
+                }
+                for m in result.mappings
+            ],
+            unmappable=[
+                {
+                    "oracle_privilege": u.oracle_privilege,
+                    "reason": u.reason,
+                    "workaround": u.workaround,
+                    "risk_level": u.risk_level,
+                }
+                for u in result.unmappable
+            ],
             grant_sql=result.grant_sql,
             overall_risk=result.overall_risk,
             analyzed_at=result.analyzed_at,
@@ -795,6 +820,7 @@ async def analyze_permissions(request: PermissionAnalysisRequest, db: Session = 
 # ============================================================================
 # Phase 3.3: Migration Workflow Endpoints
 # ============================================================================
+
 
 @app.post("/api/v3/workflow/create")
 async def create_workflow(request: WorkflowCreateRequest, db: Session = Depends(get_db)):
@@ -834,9 +860,11 @@ async def create_workflow(request: WorkflowCreateRequest, db: Session = Depends(
 async def get_workflow(workflow_id: str, db: Session = Depends(get_db)):
     """Get workflow details and current status."""
     try:
-        workflow = db.query(MigrationWorkflow).filter(
-            MigrationWorkflow.id == uuid.UUID(workflow_id)
-        ).first()
+        workflow = (
+            db.query(MigrationWorkflow)
+            .filter(MigrationWorkflow.id == uuid.UUID(workflow_id))
+            .first()
+        )
 
         if not workflow:
             raise HTTPException(status_code=404, detail="Workflow not found")
@@ -871,9 +899,11 @@ async def approve_workflow_step(
 ):
     """Approve a DBA review step and advance workflow."""
     try:
-        workflow = db.query(MigrationWorkflow).filter(
-            MigrationWorkflow.id == uuid.UUID(workflow_id)
-        ).first()
+        workflow = (
+            db.query(MigrationWorkflow)
+            .filter(MigrationWorkflow.id == uuid.UUID(workflow_id))
+            .first()
+        )
 
         if not workflow:
             raise HTTPException(status_code=404, detail="Workflow not found")
@@ -925,9 +955,11 @@ async def reject_workflow_step(
 ):
     """Reject a workflow step and set status to blocked."""
     try:
-        workflow = db.query(MigrationWorkflow).filter(
-            MigrationWorkflow.id == uuid.UUID(workflow_id)
-        ).first()
+        workflow = (
+            db.query(MigrationWorkflow)
+            .filter(MigrationWorkflow.id == uuid.UUID(workflow_id))
+            .first()
+        )
 
         if not workflow:
             raise HTTPException(status_code=404, detail="Workflow not found")
@@ -975,9 +1007,11 @@ async def update_workflow_settings(
 ):
     """Update workflow settings."""
     try:
-        workflow = db.query(MigrationWorkflow).filter(
-            MigrationWorkflow.id == uuid.UUID(workflow_id)
-        ).first()
+        workflow = (
+            db.query(MigrationWorkflow)
+            .filter(MigrationWorkflow.id == uuid.UUID(workflow_id))
+            .first()
+        )
 
         if not workflow:
             raise HTTPException(status_code=404, detail="Workflow not found")
@@ -1012,9 +1046,11 @@ async def update_workflow_settings(
 async def get_workflow_progress(workflow_id: str, db: Session = Depends(get_db)):
     """Get workflow progress summary."""
     try:
-        workflow = db.query(MigrationWorkflow).filter(
-            MigrationWorkflow.id == uuid.UUID(workflow_id)
-        ).first()
+        workflow = (
+            db.query(MigrationWorkflow)
+            .filter(MigrationWorkflow.id == uuid.UUID(workflow_id))
+            .first()
+        )
 
         if not workflow:
             raise HTTPException(status_code=404, detail="Workflow not found")
@@ -1041,6 +1077,7 @@ async def get_workflow_progress(workflow_id: str, db: Session = Depends(get_db))
 # ============================================================================
 # Phase 3.3: Connection Management Endpoints
 # ============================================================================
+
 
 @app.post("/api/v3/connections/test")
 async def test_connection(request: ConnectionTestRequest):
@@ -1146,6 +1183,7 @@ async def check_connection_health(connection_id: str):
 # Phase 3.3: Benchmark Analysis Endpoints
 # ============================================================================
 
+
 @app.post("/api/v3/benchmark/capture-oracle")
 async def capture_oracle_benchmark(request: BenchmarkCaptureRequest, db: Session = Depends(get_db)):
     """Capture Oracle performance baseline from v$sql."""
@@ -1160,11 +1198,15 @@ async def capture_oracle_benchmark(request: BenchmarkCaptureRequest, db: Session
 
 
 @app.post("/api/v3/benchmark/capture-postgres")
-async def capture_postgres_benchmark(request: BenchmarkCaptureRequest, db: Session = Depends(get_db)):
+async def capture_postgres_benchmark(
+    request: BenchmarkCaptureRequest, db: Session = Depends(get_db)
+):
     """Capture PostgreSQL performance metrics from pg_stat_statements."""
     try:
         # TODO: Get PostgreSQL connection from connection manager
-        raise HTTPException(status_code=501, detail="PostgreSQL benchmark capture not yet implemented")
+        raise HTTPException(
+            status_code=501, detail="PostgreSQL benchmark capture not yet implemented"
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -1177,25 +1219,46 @@ async def compare_benchmarks(migration_id: str, db: Session = Depends(get_db)):
     """Compare Oracle and PostgreSQL benchmark captures for a migration."""
     try:
         # Query benchmark captures for this migration
-        oracle_capture = db.query(BenchmarkCaptureModel).filter(
-            BenchmarkCaptureModel.migration_id == uuid.UUID(migration_id),
-            BenchmarkCaptureModel.db_type == "oracle",
-        ).first()
+        oracle_capture = (
+            db.query(BenchmarkCaptureModel)
+            .filter(
+                BenchmarkCaptureModel.migration_id == uuid.UUID(migration_id),
+                BenchmarkCaptureModel.db_type == "oracle",
+            )
+            .first()
+        )
 
-        postgres_capture = db.query(BenchmarkCaptureModel).filter(
-            BenchmarkCaptureModel.migration_id == uuid.UUID(migration_id),
-            BenchmarkCaptureModel.db_type == "postgres",
-        ).first()
+        postgres_capture = (
+            db.query(BenchmarkCaptureModel)
+            .filter(
+                BenchmarkCaptureModel.migration_id == uuid.UUID(migration_id),
+                BenchmarkCaptureModel.db_type == "postgres",
+            )
+            .first()
+        )
 
         if not oracle_capture or not postgres_capture:
             raise HTTPException(status_code=404, detail="Benchmark captures not found")
 
         # Reconstruct baseline and metrics from stored JSON
         import json
-        from .analyzers.benchmark_analyzer import OracleBaseline, PostgresMetrics, QueryStat, TableStat
+        from .analyzers.benchmark_analyzer import (
+            OracleBaseline,
+            PostgresMetrics,
+            QueryStat,
+            TableStat,
+        )
 
-        oracle_data = json.loads(oracle_capture.data) if isinstance(oracle_capture.data, str) else oracle_capture.data
-        postgres_data = json.loads(postgres_capture.data) if isinstance(postgres_capture.data, str) else postgres_capture.data
+        oracle_data = (
+            json.loads(oracle_capture.data)
+            if isinstance(oracle_capture.data, str)
+            else oracle_capture.data
+        )
+        postgres_data = (
+            json.loads(postgres_capture.data)
+            if isinstance(postgres_capture.data, str)
+            else postgres_capture.data
+        )
 
         oracle_baseline = OracleBaseline(
             captured_at=oracle_data["captured_at"],
@@ -1217,13 +1280,16 @@ async def compare_benchmarks(migration_id: str, db: Session = Depends(get_db)):
 
         return BenchmarkComparisonResponse(
             migration_id=str(migration_id),
-            query_comparisons=[{
-                "sql_text": c.sql_text,
-                "oracle_avg_ms": c.oracle_avg_ms,
-                "pg_avg_ms": c.pg_avg_ms,
-                "speedup_factor": c.speedup_factor,
-                "verdict": c.verdict,
-            } for c in report.query_comparisons],
+            query_comparisons=[
+                {
+                    "sql_text": c.sql_text,
+                    "oracle_avg_ms": c.oracle_avg_ms,
+                    "pg_avg_ms": c.pg_avg_ms,
+                    "speedup_factor": c.speedup_factor,
+                    "verdict": c.verdict,
+                }
+                for c in report.query_comparisons
+            ],
             table_comparisons=report.table_comparisons,
             overall_assessment=report.overall_assessment,
             generated_at=report.generated_at,
@@ -1239,4 +1305,5 @@ async def compare_benchmarks(migration_id: str, db: Session = Depends(get_db)):
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host=settings.api_host, port=settings.api_port)

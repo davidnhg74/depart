@@ -77,12 +77,14 @@ class TestBenchmarkCapture:
         # Mock v$sql query
         v_sql_result = Mock()
         v_sql_result.mappings.return_value.all.return_value = [
-            Mock(items=lambda: [
-                ("sql_text", "SELECT * FROM emp WHERE deptno = :1"),
-                ("avg_elapsed_ms", 45.5),
-                ("executions", 1000),
-                ("total_elapsed_ms", 45500.0),
-            ])
+            Mock(
+                items=lambda: [
+                    ("sql_text", "SELECT * FROM emp WHERE deptno = :1"),
+                    ("avg_elapsed_ms", 45.5),
+                    ("executions", 1000),
+                    ("total_elapsed_ms", 45500.0),
+                ]
+            )
         ]
 
         # Mock table stats
@@ -92,7 +94,9 @@ class TestBenchmarkCapture:
 
         mock_session.execute.return_value = v_sql_result
 
-        baseline = BenchmarkCapture.capture_oracle_baseline(mock_oracle_connector, migration_id="test-123")
+        baseline = BenchmarkCapture.capture_oracle_baseline(
+            mock_oracle_connector, migration_id="test-123"
+        )
 
         assert isinstance(baseline, OracleBaseline)
         assert len(baseline.top_queries) >= 0
@@ -106,12 +110,14 @@ class TestBenchmarkCapture:
         # Mock pg_stat_statements query
         pg_stats_result = Mock()
         pg_stats_result.mappings.return_value.all.return_value = [
-            Mock(items=lambda: [
-                ("query", "SELECT * FROM emp WHERE deptno = $1"),
-                ("avg_elapsed_ms", 42.3),
-                ("executions", 1050),
-                ("total_elapsed_ms", 44415.0),
-            ])
+            Mock(
+                items=lambda: [
+                    ("query", "SELECT * FROM emp WHERE deptno = $1"),
+                    ("avg_elapsed_ms", 42.3),
+                    ("executions", 1050),
+                    ("total_elapsed_ms", 44415.0),
+                ]
+            )
         ]
 
         # Mock table stats
@@ -121,7 +127,9 @@ class TestBenchmarkCapture:
 
         mock_session.execute.return_value = pg_stats_result
 
-        metrics = BenchmarkCapture.capture_postgres_metrics(mock_postgres_connector, migration_id="test-123")
+        metrics = BenchmarkCapture.capture_postgres_metrics(
+            mock_postgres_connector, migration_id="test-123"
+        )
 
         assert isinstance(metrics, PostgresMetrics)
         assert len(metrics.top_queries) >= 0
@@ -232,9 +240,7 @@ class TestBenchmarkComparator:
                     total_elapsed_ms=45500.0,
                 )
             ],
-            table_stats=[
-                TableStat(table_name="emp", row_count=14, size_bytes=16384)
-            ],
+            table_stats=[TableStat(table_name="emp", row_count=14, size_bytes=16384)],
             migration_id="test-123",
         )
 
@@ -248,14 +254,14 @@ class TestBenchmarkComparator:
                     total_elapsed_ms=44415.0,
                 )
             ],
-            table_stats=[
-                TableStat(table_name="emp", row_count=14, size_bytes=16384)
-            ],
+            table_stats=[TableStat(table_name="emp", row_count=14, size_bytes=16384)],
             migration_id="test-123",
         )
 
         mock_llm_client = Mock()
-        mock_llm_client.summarize_benchmark.return_value = "PostgreSQL is 7% faster on average queries."
+        mock_llm_client.summarize_benchmark.return_value = (
+            "PostgreSQL is 7% faster on average queries."
+        )
 
         report = comparator.compare(oracle_baseline, pg_metrics, mock_llm_client)
 

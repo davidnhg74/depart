@@ -10,6 +10,7 @@ The AI layer is purely additive — every Finding still carries its
 deterministic risk and suggestion. If the LLM call fails, we degrade to
 the deterministic output rather than hiding the report.
 """
+
 from __future__ import annotations
 
 import logging
@@ -27,6 +28,7 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class EnrichedFinding:
     """A Finding plus AI-generated developer-friendly content."""
+
     finding: Finding
     explanation: str
     before: str
@@ -86,7 +88,8 @@ class AppImpactExplainer:
         schema_summary = self._schema_summary()
         for fi in report.files:
             efi = EnrichedFileImpact(
-                file=fi.file, language=fi.language,
+                file=fi.file,
+                language=fi.language,
                 fragments_scanned=fi.fragments_scanned,
             )
             efi.findings = self._enrich_findings(fi.findings, schema_summary)
@@ -97,19 +100,20 @@ class AppImpactExplainer:
 
     # ─── internals ───────────────────────────────────────────────────────────
 
-    def _enrich_findings(self, findings: List[Finding],
-                         schema_summary: str) -> List[EnrichedFinding]:
+    def _enrich_findings(
+        self, findings: List[Finding], schema_summary: str
+    ) -> List[EnrichedFinding]:
         enriched: List[EnrichedFinding] = []
         # Sort by risk desc so the first batches contain the most important
         # findings — failures degrade gracefully on the lower-risk tail.
         from ...analyze.app_impact import _rank
+
         sorted_findings = sorted(findings, key=lambda f: -_rank(f.risk))
         for batch in _chunks(sorted_findings, self.batch_size):
             enriched.extend(self._enrich_batch(batch, schema_summary))
         return enriched
 
-    def _enrich_batch(self, batch: List[Finding],
-                      schema_summary: str) -> List[EnrichedFinding]:
+    def _enrich_batch(self, batch: List[Finding], schema_summary: str) -> List[EnrichedFinding]:
         finding_dicts = [
             {
                 "code": f.code,
@@ -120,8 +124,7 @@ class AppImpactExplainer:
             }
             for f in batch
         ]
-        user = render_user_message(schema_summary=schema_summary,
-                                   findings=finding_dicts)
+        user = render_user_message(schema_summary=schema_summary, findings=finding_dicts)
         try:
             data = self.client.complete_json(system=SYSTEM_PROMPT, user=user)
         except Exception as e:
@@ -135,13 +138,15 @@ class AppImpactExplainer:
             if not d:
                 out.append(_empty_enrichment(f))
                 continue
-            out.append(EnrichedFinding(
-                finding=f,
-                explanation=str(d.get("explanation", "")).strip(),
-                before=str(d.get("before", "")).strip(),
-                after=str(d.get("after", "")).strip(),
-                caveats=tuple(str(c).strip() for c in d.get("caveats", []) if c),
-            ))
+            out.append(
+                EnrichedFinding(
+                    finding=f,
+                    explanation=str(d.get("explanation", "")).strip(),
+                    before=str(d.get("before", "")).strip(),
+                    after=str(d.get("after", "")).strip(),
+                    caveats=tuple(str(c).strip() for c in d.get("caveats", []) if c),
+                )
+            )
         return out
 
     def _schema_summary(self) -> str:
@@ -151,17 +156,28 @@ class AppImpactExplainer:
         if self.schema is None:
             return ""
         from ...core.ir.nodes import Table
+
         lines: List[str] = []
         for o in self.schema.objects:
             if o.kind in {ObjectKind.TABLE, ObjectKind.VIEW, ObjectKind.MATERIALIZED_VIEW}:
                 cols = ""
                 if isinstance(o, Table) and o.columns:
-                    cols = " (" + ", ".join(c.name for c in o.columns[:6]) + (
-                        ", ..." if len(o.columns) > 6 else "") + ")"
+                    cols = (
+                        " ("
+                        + ", ".join(c.name for c in o.columns[:6])
+                        + (", ..." if len(o.columns) > 6 else "")
+                        + ")"
+                    )
                 lines.append(f"{o.kind.value} {o.name}{cols}")
-            elif o.kind in {ObjectKind.PROCEDURE, ObjectKind.FUNCTION,
-                            ObjectKind.PACKAGE, ObjectKind.PACKAGE_BODY,
-                            ObjectKind.SEQUENCE, ObjectKind.INDEX, ObjectKind.TRIGGER}:
+            elif o.kind in {
+                ObjectKind.PROCEDURE,
+                ObjectKind.FUNCTION,
+                ObjectKind.PACKAGE,
+                ObjectKind.PACKAGE_BODY,
+                ObjectKind.SEQUENCE,
+                ObjectKind.INDEX,
+                ObjectKind.TRIGGER,
+            }:
                 lines.append(f"{o.kind.value} {o.name}")
         return "\n".join(lines[:200])
 
@@ -178,4 +194,4 @@ def _empty_enrichment(f: Finding) -> EnrichedFinding:
 
 def _chunks(seq: List, n: int) -> Iterable[List]:
     for i in range(0, len(seq), n):
-        yield seq[i:i + n]
+        yield seq[i : i + n]

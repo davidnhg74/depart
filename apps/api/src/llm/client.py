@@ -45,11 +45,7 @@ Oracle PL/SQL:
 Context: {context}
 """
         message = self.client.messages.create(
-            model=self.model,
-            max_tokens=4096,
-            messages=[
-                {"role": "user", "content": prompt}
-            ]
+            model=self.model, max_tokens=4096, messages=[{"role": "user", "content": prompt}]
         )
         return message.content[0].text
 
@@ -124,7 +120,7 @@ IMPORTANT: Output ONLY valid JSON, no markdown, no explanation.
             # Strip markdown code blocks if present
             for prefix in ("```json", "```"):
                 if text.startswith(prefix):
-                    text = text[len(prefix):]
+                    text = text[len(prefix) :]
             if text.endswith("```"):
                 text = text[:-3]
             text = text.strip()
@@ -195,7 +191,7 @@ IMPORTANT: Output ONLY valid JSON, no markdown, no explanation.
             # Strip markdown code blocks if present
             for prefix in ("```json", "```"):
                 if text.startswith(prefix):
-                    text = text[len(prefix):]
+                    text = text[len(prefix) :]
             if text.endswith("```"):
                 text = text[:-3]
             text = text.strip()

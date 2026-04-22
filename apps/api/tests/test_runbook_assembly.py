@@ -1,4 +1,5 @@
 """Tests for the deterministic runbook assembly logic."""
+
 from pathlib import Path
 
 import pytest
@@ -152,7 +153,10 @@ class TestBlockers:
 
     def test_no_app_impact_means_no_blockers(self, complexity):
         ctx = RunbookContext(
-            project_name="x", customer="y", complexity=complexity, app_impact=None,
+            project_name="x",
+            customer="y",
+            complexity=complexity,
+            app_impact=None,
         )
         rb = assemble(ctx)
         assert rb.blockers == []
@@ -174,20 +178,29 @@ class TestDefaultNarrative:
         rb = assemble(base_ctx)
         cx = base_ctx.complexity
         if cx.must_rewrite_lines:
-            assert "rewrite" in rb.risk_narrative.lower() or str(cx.must_rewrite_lines) in rb.risk_narrative
+            assert (
+                "rewrite" in rb.risk_narrative.lower()
+                or str(cx.must_rewrite_lines) in rb.risk_narrative
+            )
         if cx.needs_review_lines:
-            assert "review" in rb.risk_narrative.lower() or str(cx.needs_review_lines) in rb.risk_narrative
+            assert (
+                "review" in rb.risk_narrative.lower()
+                or str(cx.needs_review_lines) in rb.risk_narrative
+            )
 
     def test_ai_summary_overrides_default_when_provided(self, base_ctx):
-        rb = assemble(base_ctx, executive_summary="AI says so.",
-                      risk_narrative="AI risk text.", prompt_version="v1")
+        rb = assemble(
+            base_ctx,
+            executive_summary="AI says so.",
+            risk_narrative="AI risk text.",
+            prompt_version="v1",
+        )
         assert rb.executive_summary == "AI says so."
         assert rb.risk_narrative == "AI risk text."
         assert rb.prompt_version == "v1"
 
     def test_no_complexity_yields_safe_runbook(self):
-        ctx = RunbookContext(project_name="x", customer="y",
-                             complexity=None, app_impact=None)
+        ctx = RunbookContext(project_name="x", customer="y", complexity=None, app_impact=None)
         rb = assemble(ctx)
         assert rb.phases and len(rb.phases) == 6
         assert rb.executive_summary

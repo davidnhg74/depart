@@ -101,8 +101,7 @@ class CheckpointManager:
             total_rows=total_rows,
             last_rowid=last_rowid,
             status=status,
-            progress_percentage=
-            (rows_processed / total_rows * 100) if total_rows > 0 else 0,
+            progress_percentage=(rows_processed / total_rows * 100) if total_rows > 0 else 0,
             created_at=datetime.utcnow(),
         )
 
@@ -122,8 +121,7 @@ class CheckpointManager:
         checkpoint = (
             self.db.query(MigrationCheckpointRecord)
             .filter(
-                MigrationCheckpointRecord.migration_id
-                == _to_uuid(migration_id),
+                MigrationCheckpointRecord.migration_id == _to_uuid(migration_id),
                 MigrationCheckpointRecord.table_name == table_name,
             )
             .order_by(MigrationCheckpointRecord.created_at.desc())
@@ -132,9 +130,7 @@ class CheckpointManager:
 
         return checkpoint
 
-    def resume_from_checkpoint(
-        self, migration_id: str, table_name: str
-    ) -> Optional[dict]:
+    def resume_from_checkpoint(self, migration_id: str, table_name: str) -> Optional[dict]:
         """Get resumption point for a table."""
         checkpoint = self.get_latest_checkpoint(migration_id, table_name)
 
@@ -161,9 +157,11 @@ class CheckpointManager:
         """Mark entire migration as complete."""
         from ..models import MigrationRecord
 
-        migration = self.db.query(MigrationRecord).filter(
-            MigrationRecord.id == _to_uuid(migration_id)
-        ).first()
+        migration = (
+            self.db.query(MigrationRecord)
+            .filter(MigrationRecord.id == _to_uuid(migration_id))
+            .first()
+        )
 
         if migration:
             migration.status = "completed"
@@ -177,16 +175,11 @@ class CheckpointManager:
 
         checkpoints = (
             self.db.query(MigrationCheckpointRecord)
-            .filter(
-                MigrationCheckpointRecord.migration_id
-                == _to_uuid(migration_id)
-            )
+            .filter(MigrationCheckpointRecord.migration_id == _to_uuid(migration_id))
             .all()
         )
 
-        completed_tables = sum(
-            1 for c in checkpoints if c.status == "completed"
-        )
+        completed_tables = sum(1 for c in checkpoints if c.status == "completed")
         total_tables = len(set(c.table_name for c in checkpoints))
         total_rows_processed = sum(c.rows_processed for c in checkpoints)
 
@@ -214,8 +207,7 @@ class CheckpointManager:
         checkpoints = (
             self.db.query(MigrationCheckpointRecord)
             .filter(
-                MigrationCheckpointRecord.migration_id
-                == _to_uuid(migration_id),
+                MigrationCheckpointRecord.migration_id == _to_uuid(migration_id),
                 MigrationCheckpointRecord.status == "failed",
             )
             .all()
@@ -238,8 +230,7 @@ class CheckpointManager:
         failed_checkpoints = (
             self.db.query(MigrationCheckpointRecord)
             .filter(
-                MigrationCheckpointRecord.migration_id
-                == _to_uuid(migration_id),
+                MigrationCheckpointRecord.migration_id == _to_uuid(migration_id),
                 MigrationCheckpointRecord.status == "failed",
             )
             .all()

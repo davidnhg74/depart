@@ -11,6 +11,7 @@ render their input differently before calling the model. The caller
 provides a small adapter `(case.inputs) -> response_str` and the runner
 handles the rest (timing, scoring, aggregation).
 """
+
 from __future__ import annotations
 
 import json
@@ -71,14 +72,18 @@ class EvalRunner:
             response = self.invoke(case.inputs)
         except Exception as e:
             return CaseResult(
-                case_id=case.id, passed=False, response="",
+                case_id=case.id,
+                passed=False,
+                response="",
                 error=f"{type(e).__name__}: {e}",
                 latency_ms=(time.perf_counter() - t0) * 1000.0,
             )
         rule_results = evaluate(response, case.rules)
         passed = all(r.passed for r in rule_results)
         return CaseResult(
-            case_id=case.id, passed=passed, response=response,
+            case_id=case.id,
+            passed=passed,
+            response=response,
             rule_results=rule_results,
             latency_ms=(time.perf_counter() - t0) * 1000.0,
         )

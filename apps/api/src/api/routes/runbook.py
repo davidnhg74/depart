@@ -13,6 +13,7 @@ POST /api/v3/projects/runbook
 
 Returns either application/pdf or a JSON serialization of the Runbook.
 """
+
 from __future__ import annotations
 
 import logging
@@ -148,8 +149,7 @@ async def generate_runbook(
             content=pdf_bytes,
             media_type="application/pdf",
             headers={
-                "Content-Disposition":
-                    f'attachment; filename="runbook-{customer.replace(" ", "_")}.pdf"',
+                "Content-Disposition": f'attachment; filename="runbook-{customer.replace(" ", "_")}.pdf"',
             },
         )
 
@@ -165,7 +165,9 @@ async def _unzip(upload: UploadFile, dest: Path) -> Path:
     if not data:
         raise HTTPException(400, f"{upload.filename or 'upload'} is empty")
     if len(data) > MAX_ZIP_BYTES:
-        raise HTTPException(413, f"{upload.filename} exceeds {MAX_ZIP_BYTES // (1024 * 1024)} MB cap")
+        raise HTTPException(
+            413, f"{upload.filename} exceeds {MAX_ZIP_BYTES // (1024 * 1024)} MB cap"
+        )
     tmp_zip = dest.parent / f"{dest.name}.zip"
     tmp_zip.write_bytes(data)
     try:
@@ -180,8 +182,7 @@ async def _unzip(upload: UploadFile, dest: Path) -> Path:
 
 def _read_sql(schema_dir: Path) -> str:
     return "\n\n".join(
-        p.read_text(encoding="utf-8", errors="replace")
-        for p in sorted(schema_dir.rglob("*.sql"))
+        p.read_text(encoding="utf-8", errors="replace") for p in sorted(schema_dir.rglob("*.sql"))
     )
 
 
@@ -209,8 +210,12 @@ def _to_dto(runbook, *, explained: bool) -> RunbookDTO:
         ],
         blockers=[
             BlockerDTO(
-                code=b.code, message=b.message, file=b.file, line=b.line,
-                suggestion=b.suggestion, explanation=b.explanation,
+                code=b.code,
+                message=b.message,
+                file=b.file,
+                line=b.line,
+                suggestion=b.suggestion,
+                explanation=b.explanation,
             )
             for b in runbook.blockers
         ],

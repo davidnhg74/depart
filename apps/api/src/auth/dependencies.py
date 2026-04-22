@@ -1,4 +1,5 @@
 """FastAPI dependencies for authentication."""
+
 from typing import Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer
@@ -11,10 +12,7 @@ security = HTTPBearer()
 security_optional = HTTPBearer(auto_error=False)
 
 
-async def get_current_user(
-    credentials = Depends(security),
-    db: Session = Depends(get_db)
-) -> User:
+async def get_current_user(credentials=Depends(security), db: Session = Depends(get_db)) -> User:
     """Get the current authenticated user from JWT token."""
     token = credentials.credentials
     payload = decode_token(token)
@@ -59,8 +57,7 @@ async def get_current_user(
 
 
 async def get_optional_user(
-    db: Session = Depends(get_db),
-    credentials = Depends(security_optional)
+    db: Session = Depends(get_db), credentials=Depends(security_optional)
 ) -> Optional[User]:
     """Get the current user if authenticated, otherwise return None."""
     if not credentials:

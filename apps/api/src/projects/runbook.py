@@ -18,6 +18,7 @@ layers:
 PDF rendering lives in `pdf.py`; the API route consumes Runbook + the
 PDF renderer to deliver a downloadable artifact.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -34,6 +35,7 @@ from ..analyze.complexity import ComplexityReport
 @dataclass
 class RunbookContext:
     """Project metadata + computed inputs."""
+
     project_name: str
     customer: str
     source_version: str = "Oracle 19c"
@@ -63,6 +65,7 @@ class RunbookPhase:
 @dataclass
 class RunbookBlocker:
     """A CRITICAL finding surfaced into the runbook's blockers section."""
+
     code: str
     message: str
     file: str
@@ -80,7 +83,7 @@ class Runbook:
     blockers: List[RunbookBlocker]
     sign_offs: List[str]
     generated_at: datetime
-    prompt_version: str = ""        # set when AI sections are populated
+    prompt_version: str = ""  # set when AI sections are populated
 
 
 # ─── Deterministic assembly ──────────────────────────────────────────────────
@@ -88,10 +91,13 @@ class Runbook:
 
 # Standard six-phase template. Per-phase activities reference the inputs
 # (complexity, app-impact) when populated; otherwise sensible defaults.
-def assemble(context: RunbookContext,
-             *, executive_summary: str = "",
-             risk_narrative: str = "",
-             prompt_version: str = "") -> Runbook:
+def assemble(
+    context: RunbookContext,
+    *,
+    executive_summary: str = "",
+    risk_narrative: str = "",
+    prompt_version: str = "",
+) -> Runbook:
     """Build a Runbook from context. AI sections optional — pass them in
     if available, otherwise the runbook is deterministic-only and the
     PDF still renders without a Summary/Risk Narrative section."""
@@ -114,16 +120,16 @@ def assemble(context: RunbookContext,
 
 def _build_phases(ctx: RunbookContext) -> List[RunbookPhase]:
     cx = ctx.complexity
-    total_days = (cx.effort_estimate_days if cx else 5.0)
+    total_days = cx.effort_estimate_days if cx else 5.0
 
     # Coarse budget split across phases — overridable by per-engagement
     # calibration when we have data from real customer runs.
     budget = {
-        "discovery":     0.10,
-        "schema":        0.20,
-        "app":           0.25,
-        "data":          0.20,
-        "cutover":       0.10,
+        "discovery": 0.10,
+        "schema": 0.20,
+        "app": 0.25,
+        "data": 0.20,
+        "cutover": 0.10,
         "stabilization": 0.15,
     }
 
@@ -150,7 +156,6 @@ def _build_phases(ctx: RunbookContext) -> List[RunbookPhase]:
             duration_days=round(total_days * budget["discovery"], 1),
             risk_level=RiskLevel.LOW,
         ),
-
         RunbookPhase(
             title="2. Schema Conversion",
             description=(
@@ -171,7 +176,6 @@ def _build_phases(ctx: RunbookContext) -> List[RunbookPhase]:
             duration_days=round(total_days * budget["schema"], 1),
             risk_level=_max_tier_risk(cx),
         ),
-
         RunbookPhase(
             title="3. Application Refactor",
             description=(
@@ -191,7 +195,6 @@ def _build_phases(ctx: RunbookContext) -> List[RunbookPhase]:
             duration_days=round(total_days * budget["app"], 1),
             risk_level=_app_risk(ctx.app_impact),
         ),
-
         RunbookPhase(
             title="4. Data Migration",
             description=(
@@ -218,7 +221,6 @@ def _build_phases(ctx: RunbookContext) -> List[RunbookPhase]:
             duration_days=round(total_days * budget["data"], 1),
             risk_level=RiskLevel.MEDIUM,
         ),
-
         RunbookPhase(
             title="5. Cutover",
             description=(
@@ -247,7 +249,6 @@ def _build_phases(ctx: RunbookContext) -> List[RunbookPhase]:
             duration_days=round(total_days * budget["cutover"], 1),
             risk_level=RiskLevel.HIGH,
         ),
-
         RunbookPhase(
             title="6. Stabilization",
             description=(
@@ -287,11 +288,15 @@ def _schema_activities(cx: Optional[ComplexityReport]) -> List[str]:
         f"Refactor {cx.must_rewrite_lines} lines (Tier C — architectural)",
     ]
     if cx.tier_c_constructs:
-        base.append("Tier-C constructs requiring architectural attention: "
-                    + ", ".join(sorted(set(cx.tier_c_constructs))))
+        base.append(
+            "Tier-C constructs requiring architectural attention: "
+            + ", ".join(sorted(set(cx.tier_c_constructs)))
+        )
     if cx.tier_b_constructs:
-        base.append("Tier-B constructs requiring per-call review: "
-                    + ", ".join(sorted(set(cx.tier_b_constructs))))
+        base.append(
+            "Tier-B constructs requiring per-call review: "
+            + ", ".join(sorted(set(cx.tier_b_constructs)))
+        )
     base.append("Validate every converted object against an equivalence test")
     return base
 
@@ -314,7 +319,9 @@ def _app_activities(app_impact) -> List[str]:
     if counts.get("high"):
         parts.append(f"Resolve {counts['high']} HIGH findings during the refactor window")
     if counts.get("medium"):
-        parts.append(f"Address {counts['medium']} MEDIUM findings (mechanical Oracle→PG function swaps)")
+        parts.append(
+            f"Address {counts['medium']} MEDIUM findings (mechanical Oracle→PG function swaps)"
+        )
     parts += [
         "Code review every change with the file owner",
         "Land changes behind a feature flag on the connection-string pointer",
@@ -357,14 +364,16 @@ def _build_blockers(ctx: RunbookContext) -> List[RunbookBlocker]:
         for ef in getattr(fi, "findings", []):
             f = getattr(ef, "finding", ef)
             if getattr(f, "risk", None) == RiskLevel.CRITICAL:
-                blockers.append(RunbookBlocker(
-                    code=f.code,
-                    message=f.message,
-                    file=f.file,
-                    line=f.line,
-                    suggestion=f.suggestion,
-                    explanation=getattr(ef, "explanation", "") or "",
-                ))
+                blockers.append(
+                    RunbookBlocker(
+                        code=f.code,
+                        message=f.message,
+                        file=f.file,
+                        line=f.line,
+                        suggestion=f.suggestion,
+                        explanation=getattr(ef, "explanation", "") or "",
+                    )
+                )
     blockers.sort(key=lambda b: (b.file, b.line))
     return blockers
 
@@ -412,7 +421,5 @@ def _default_risk_narrative(ctx: RunbookContext) -> str:
             f"({len(cx.tier_b_constructs)} distinct Tier-B constructs)."
         )
     if cx.auto_convertible_lines:
-        parts.append(
-            f"{cx.auto_convertible_lines} lines auto-convert deterministically."
-        )
+        parts.append(f"{cx.auto_convertible_lines} lines auto-convert deterministically.")
     return " ".join(parts) or "No notable risks detected in the static analysis."

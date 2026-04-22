@@ -9,6 +9,7 @@ The wrapper is small but does several things that matter:
 We mock `anthropic.Anthropic` so these tests run with no network access
 and no API key.
 """
+
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -22,6 +23,7 @@ def _ensure_api_key(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     # The settings object reads at import time; patch its attribute directly.
     from src import config
+
     monkeypatch.setattr(config.settings, "anthropic_api_key", "test-key", raising=False)
     yield
 
@@ -29,8 +31,10 @@ def _ensure_api_key(monkeypatch):
 def _stub_response(text: str, *, in_tok=10, out_tok=5):
     text_block = SimpleNamespace(type="text", text=text)
     usage = SimpleNamespace(
-        input_tokens=in_tok, output_tokens=out_tok,
-        cache_read_input_tokens=0, cache_creation_input_tokens=0,
+        input_tokens=in_tok,
+        output_tokens=out_tok,
+        cache_read_input_tokens=0,
+        cache_creation_input_tokens=0,
     )
     return SimpleNamespace(content=[text_block], usage=usage)
 
@@ -39,6 +43,7 @@ class TestAIClientShape:
     @patch("src.ai.client.Anthropic")
     def test_complete_returns_text(self, MockClient):
         from src.ai.client import AIClient
+
         instance = MagicMock()
         MockClient.return_value = instance
         instance.messages.create.return_value = _stub_response("hello world")
@@ -50,6 +55,7 @@ class TestAIClientShape:
     @patch("src.ai.client.Anthropic")
     def test_system_prompt_is_cached_by_default(self, MockClient):
         from src.ai.client import AIClient
+
         instance = MagicMock()
         MockClient.return_value = instance
         instance.messages.create.return_value = _stub_response("ok")
@@ -59,13 +65,13 @@ class TestAIClientShape:
 
         kwargs = instance.messages.create.call_args.kwargs
         assert kwargs["system"] == [
-            {"type": "text", "text": "big stable prompt",
-             "cache_control": {"type": "ephemeral"}}
+            {"type": "text", "text": "big stable prompt", "cache_control": {"type": "ephemeral"}}
         ]
 
     @patch("src.ai.client.Anthropic")
     def test_can_disable_caching(self, MockClient):
         from src.ai.client import AIClient
+
         instance = MagicMock()
         MockClient.return_value = instance
         instance.messages.create.return_value = _stub_response("ok")
@@ -82,6 +88,7 @@ class TestTokenLedger:
     @patch("src.ai.client.Anthropic")
     def test_records_usage_with_feature(self, MockClient):
         from src.ai.client import AIClient, get_ledger
+
         get_ledger().reset()
 
         instance = MagicMock()
@@ -101,6 +108,7 @@ class TestJsonParsing:
     @patch("src.ai.client.Anthropic")
     def test_plain_json(self, MockClient):
         from src.ai.client import AIClient
+
         instance = MagicMock()
         MockClient.return_value = instance
         instance.messages.create.return_value = _stub_response('{"x": 1}')
@@ -111,6 +119,7 @@ class TestJsonParsing:
     @patch("src.ai.client.Anthropic")
     def test_strips_fenced_json(self, MockClient):
         from src.ai.client import AIClient
+
         instance = MagicMock()
         MockClient.return_value = instance
         fenced = '```json\n{"x": [1, 2]}\n```'
@@ -122,6 +131,7 @@ class TestJsonParsing:
     @patch("src.ai.client.Anthropic")
     def test_strips_unlabeled_fence(self, MockClient):
         from src.ai.client import AIClient
+
         instance = MagicMock()
         MockClient.return_value = instance
         instance.messages.create.return_value = _stub_response('```\n{"a": true}\n```')
@@ -131,6 +141,7 @@ class TestJsonParsing:
     @patch("src.ai.client.Anthropic")
     def test_raises_value_error_on_bad_json(self, MockClient):
         from src.ai.client import AIClient
+
         instance = MagicMock()
         MockClient.return_value = instance
         instance.messages.create.return_value = _stub_response("not json")
@@ -144,6 +155,7 @@ class TestModelSelection:
     def test_fast_constructor_uses_fast_model(self, MockClient):
         from src.ai import client as c
         from src.ai.client import AIClient
+
         instance = MagicMock()
         MockClient.return_value = instance
         instance.messages.create.return_value = _stub_response("ok")
@@ -157,6 +169,7 @@ class TestModelSelection:
     def test_smart_constructor_uses_smart_model(self, MockClient):
         from src.ai import client as c
         from src.ai.client import AIClient
+
         instance = MagicMock()
         MockClient.return_value = instance
         instance.messages.create.return_value = _stub_response("ok")
@@ -171,6 +184,7 @@ class TestApiKeyEnforcement:
     def test_missing_key_raises(self, monkeypatch):
         from src.ai.client import AIClient
         from src import config
+
         monkeypatch.setattr(config.settings, "anthropic_api_key", "", raising=False)
         with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY"):
             AIClient()

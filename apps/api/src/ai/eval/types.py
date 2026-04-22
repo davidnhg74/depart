@@ -14,6 +14,7 @@ Rule shapes (machine-friendly; kept small so corpus JSONL stays readable):
   max_chars:           int         — overall response length cap
   min_chars:           int
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -23,6 +24,7 @@ from typing import Any, Dict, List, Optional
 @dataclass(frozen=True)
 class ScoreRule:
     """One assertion against an LLM response."""
+
     kind: str
     config: Any
 
@@ -37,8 +39,9 @@ class ScoreRule:
 @dataclass(frozen=True)
 class EvalCase:
     """A single (input, expected) pair."""
+
     id: str
-    inputs: Dict[str, Any]      # arguments passed to the prompt's render() function
+    inputs: Dict[str, Any]  # arguments passed to the prompt's render() function
     rules: List[ScoreRule]
     description: str = ""
 
@@ -72,6 +75,7 @@ class CaseResult:
 @dataclass
 class EvalResult:
     """All cases for one suite run."""
+
     prompt_id: str
     prompt_version: str
     model: str
@@ -97,5 +101,6 @@ class EvalResult:
 @dataclass(frozen=True)
 class EvalSuite:
     """Loaded corpus for one prompt id."""
+
     prompt_id: str
     cases: List[EvalCase]

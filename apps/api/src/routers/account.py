@@ -1,4 +1,5 @@
 """Account management endpoints: profile, password, API keys, usage."""
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
@@ -131,7 +132,9 @@ async def list_api_keys(
     db: Session = Depends(get_db),
 ):
     """List all API keys for current user."""
-    keys = db.query(ApiKey).filter(ApiKey.user_id == current_user.id, ApiKey.is_active == True).all()
+    keys = (
+        db.query(ApiKey).filter(ApiKey.user_id == current_user.id, ApiKey.is_active == True).all()
+    )
     return [
         ApiKeyResponse(
             id=str(key.id),
@@ -184,10 +187,14 @@ async def revoke_api_key(
     db: Session = Depends(get_db),
 ):
     """Revoke an API key."""
-    api_key = db.query(ApiKey).filter(
-        ApiKey.id == key_id,
-        ApiKey.user_id == current_user.id,
-    ).first()
+    api_key = (
+        db.query(ApiKey)
+        .filter(
+            ApiKey.id == key_id,
+            ApiKey.user_id == current_user.id,
+        )
+        .first()
+    )
 
     if not api_key:
         raise HTTPException(
@@ -216,5 +223,9 @@ async def get_usage(
         migrations_limit=limits["migrations_per_month"],
         llm_conversions_this_month=current_user.llm_conversions_this_month,
         llm_conversions_limit=limits["llm_per_month"],
-        trial_expires_at=current_user.trial_expires_at.isoformat() if current_user.plan.value == "trial" else None,
+        trial_expires_at=(
+            current_user.trial_expires_at.isoformat()
+            if current_user.plan.value == "trial"
+            else None
+        ),
     )

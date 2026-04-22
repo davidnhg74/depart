@@ -53,11 +53,13 @@ class InputValidator:
         ipv4_pattern = re.compile(
             r"^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
         )
-        hostname_pattern = re.compile(
-            r"^(?!-)[a-zA-Z0-9-]{1,63}(?<!-)(?:\.[a-zA-Z]{2,})+$"
-        )
+        hostname_pattern = re.compile(r"^(?!-)[a-zA-Z0-9-]{1,63}(?<!-)(?:\.[a-zA-Z]{2,})+$")
 
-        return bool(ipv4_pattern.match(value)) or bool(hostname_pattern.match(value)) or value == "localhost"
+        return (
+            bool(ipv4_pattern.match(value))
+            or bool(hostname_pattern.match(value))
+            or value == "localhost"
+        )
 
     @staticmethod
     def validate_port(value: int) -> bool:

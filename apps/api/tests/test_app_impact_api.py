@@ -4,6 +4,7 @@ We mount just the router on a fresh FastAPI app per test — avoids
 importing the full src.main module (which has heavier dependencies)
 and isolates each test from session state.
 """
+
 import io
 import zipfile
 from pathlib import Path
@@ -20,6 +21,7 @@ FIXTURES = Path(__file__).parent / "fixtures" / "app_impact"
 @pytest.fixture
 def client():
     from src.api.routes.app_impact import router
+
     app = FastAPI()
     app.include_router(router)
     return TestClient(app)
@@ -96,10 +98,12 @@ class TestDeterministicResponse:
     def test_languages_filter_applied(self, client):
         schema_zip = _zip_dir(FIXTURES / "schema")
         # Build a zip mixing Java + Python; ask for python only.
-        mixed = _make_zip({
-            "Repo.java": '"SELECT * FROM employees WHERE ROWNUM <= 10"',
-            "repo.py":   "x = 'SELECT * FROM employees WHERE ROWNUM <= 10'",
-        })
+        mixed = _make_zip(
+            {
+                "Repo.java": '"SELECT * FROM employees WHERE ROWNUM <= 10"',
+                "repo.py": "x = 'SELECT * FROM employees WHERE ROWNUM <= 10'",
+            }
+        )
         resp = client.post(
             "/api/v3/analyze/app-impact",
             files={
@@ -122,7 +126,9 @@ class TestExplainPath:
     def test_explain_true_invokes_explainer(self, MockExplainer, client):
         from src.analyze.app_impact import RiskLevel
         from src.ai.services.app_impact import (
-            EnrichedAppImpactReport, EnrichedFileImpact, EnrichedFinding,
+            EnrichedAppImpactReport,
+            EnrichedFileImpact,
+            EnrichedFinding,
         )
         from src.analyze.app_impact import Finding
 
@@ -145,12 +151,20 @@ class TestExplainPath:
             caveats=("watch nulls",),
         )
         MockExplainer.return_value.enrich.return_value = EnrichedAppImpactReport(
-            files=[EnrichedFileImpact(
-                file="x.java", language="java", fragments_scanned=1, findings=[ef],
-            )],
-            total_files_scanned=1, total_fragments=1, total_findings=1,
+            files=[
+                EnrichedFileImpact(
+                    file="x.java",
+                    language="java",
+                    fragments_scanned=1,
+                    findings=[ef],
+                )
+            ],
+            total_files_scanned=1,
+            total_fragments=1,
+            total_findings=1,
             findings_by_risk={"medium": 1},
-            explanations_generated=1, explanations_failed=0,
+            explanations_generated=1,
+            explanations_failed=0,
         )
 
         resp = client.post(
@@ -186,7 +200,7 @@ class TestExplainPath:
         )
         assert resp.status_code == 200, resp.text
         body = resp.json()
-        assert body["explained"] is False    # deterministic fallback
+        assert body["explained"] is False  # deterministic fallback
 
 
 # ─── Error paths ─────────────────────────────────────────────────────────────
@@ -220,4 +234,4 @@ class TestErrors:
             "/api/v3/analyze/app-impact",
             files={"source_zip": ("c.zip", _zip_dir(FIXTURES / "java"), "application/zip")},
         )
-        assert resp.status_code == 422       # FastAPI validation error
+        assert resp.status_code == 422  # FastAPI validation error

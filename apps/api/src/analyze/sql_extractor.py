@@ -11,6 +11,7 @@ that we don't track Java's text blocks or Python's f-string interpolation
 edge cases — what we get back is "the source text of the literal, plus
 its 1-indexed line." Good enough to find SQL.
 """
+
 from __future__ import annotations
 
 import re
@@ -22,25 +23,36 @@ from typing import Callable, List, Optional
 @dataclass(frozen=True)
 class SqlFragment:
     """One string literal that looked like SQL."""
+
     sql: str
     file: str
-    line: int           # 1-indexed line of the opening quote
+    line: int  # 1-indexed line of the opening quote
 
 
 @dataclass(frozen=True)
 class Extractor:
     language: str
     extensions: tuple
-    fn: Callable[[str], List[tuple]]    # (line, text) tuples
+    fn: Callable[[str], List[tuple]]  # (line, text) tuples
 
 
 # ─── Heuristic: does this string look like SQL? ──────────────────────────────
 
 
 _SQL_KEYWORDS = (
-    "SELECT", "INSERT", "UPDATE", "DELETE", "MERGE", "WITH",
-    "CREATE", "ALTER", "DROP", "TRUNCATE",
-    "BEGIN", "DECLARE", "CALL",
+    "SELECT",
+    "INSERT",
+    "UPDATE",
+    "DELETE",
+    "MERGE",
+    "WITH",
+    "CREATE",
+    "ALTER",
+    "DROP",
+    "TRUNCATE",
+    "BEGIN",
+    "DECLARE",
+    "CALL",
 )
 _SQL_RX = re.compile(
     r"^\s*(" + "|".join(_SQL_KEYWORDS) + r")\b",
@@ -93,11 +105,11 @@ def _extract_java_raw(source: str) -> List[tuple]:
                 i += 1
             i += 2
             continue
-        if ch == '"' and source[i:i + 3] == '"""':
+        if ch == '"' and source[i : i + 3] == '"""':
             start_line = line
             i += 3
             buf = []
-            while i + 2 < n and source[i:i + 3] != '"""':
+            while i + 2 < n and source[i : i + 3] != '"""':
                 buf.append(source[i])
                 if source[i] == "\n":
                     line += 1
@@ -151,7 +163,7 @@ def _merge_java_concatenations(raw_with_end: List[tuple], source: str) -> List[t
         # The interpolated text between cur_end and the start of the next
         # literal — if it's only `+`, whitespace, and comments, it's a
         # continuation.
-        gap = source[cur_end:_start_of(next_line, next_text, source, next_end)]
+        gap = source[cur_end : _start_of(next_line, next_text, source, next_end)]
         if _is_string_concat_gap(gap):
             cur_text = cur_text + next_text
             cur_end = next_end
@@ -211,12 +223,12 @@ def extract_python(source: str) -> List[tuple]:
         # Triple-quoted strings (must check BEFORE single-quoted)
         if ch in ('"', "'"):
             quote = ch
-            triple = source[i:i + 3] == quote * 3
+            triple = source[i : i + 3] == quote * 3
             start_line = line
             if triple:
                 i += 3
                 buf = []
-                while i + 2 < n and source[i:i + 3] != quote * 3:
+                while i + 2 < n and source[i : i + 3] != quote * 3:
                     if source[i] == "\\" and i + 1 < n:
                         buf.append(source[i + 1])
                         if source[i + 1] == "\n":
@@ -302,12 +314,16 @@ def extract_csharp(source: str) -> List[tuple]:
             buf = []
             while i < n:
                 if source[i] == '"' and i + 1 < n and source[i + 1] == '"':
-                    buf.append('"'); i += 2; continue
+                    buf.append('"')
+                    i += 2
+                    continue
                 if source[i] == '"':
-                    i += 1; break
+                    i += 1
+                    break
                 if source[i] == "\n":
                     line += 1
-                buf.append(source[i]); i += 1
+                buf.append(source[i])
+                i += 1
             out.append((start_line, "".join(buf)))
             continue
         # Interpolated string $"..." (single-line; doesn't cross newlines)
@@ -315,20 +331,24 @@ def extract_csharp(source: str) -> List[tuple]:
             start_line = line
             i += 2
             buf = []
-            depth = 0       # track {} nesting (interpolation)
+            depth = 0  # track {} nesting (interpolation)
             while i < n:
                 c = source[i]
-                if c == "{" and source[i + 1:i + 2] != "{":
+                if c == "{" and source[i + 1 : i + 2] != "{":
                     depth += 1
                 elif c == "}" and depth > 0:
                     depth -= 1
                 elif c == '"' and depth == 0:
-                    i += 1; break
+                    i += 1
+                    break
                 elif c == "\\" and i + 1 < n and depth == 0:
-                    buf.append(source[i + 1]); i += 2; continue
+                    buf.append(source[i + 1])
+                    i += 2
+                    continue
                 if c == "\n":
                     line += 1
-                buf.append(c); i += 1
+                buf.append(c)
+                i += 1
             out.append((start_line, "".join(buf)))
             continue
         # Plain "..."
@@ -338,10 +358,13 @@ def extract_csharp(source: str) -> List[tuple]:
             buf = []
             while i < n and source[i] != '"':
                 if source[i] == "\\" and i + 1 < n:
-                    buf.append(source[i + 1]); i += 2; continue
+                    buf.append(source[i + 1])
+                    i += 2
+                    continue
                 if source[i] == "\n":
                     line += 1
-                buf.append(source[i]); i += 1
+                buf.append(source[i])
+                i += 1
             i += 1
             out.append((start_line, "".join(buf)))
             continue
@@ -350,7 +373,8 @@ def extract_csharp(source: str) -> List[tuple]:
             i += 1
             while i < n and source[i] != "'":
                 if source[i] == "\\":
-                    i += 2; continue
+                    i += 2
+                    continue
                 i += 1
             i += 1
             continue

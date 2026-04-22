@@ -4,6 +4,7 @@ The interim lexer's contract is "tokens with correct string/comment
 awareness." Every test here also locks in behavior the regex parser got
 wrong, so we'll catch any regression even after the ANTLR swap.
 """
+
 import pytest
 
 from src.source.oracle._lexer import TokenKind, tokenize
@@ -69,15 +70,27 @@ class TestStrings:
 
     def test_keyword_inside_string_is_not_a_keyword(self):
         toks = tokenize("VALUES ('CONNECT BY MERGE INTO PRAGMA AUTONOMOUS_TRANSACTION')")
-        kws = [t for t in toks if t.kind == TokenKind.KEYWORD
-               and t.upper in ("CONNECT", "MERGE", "PRAGMA", "AUTONOMOUS_TRANSACTION")]
+        kws = [
+            t
+            for t in toks
+            if t.kind == TokenKind.KEYWORD
+            and t.upper in ("CONNECT", "MERGE", "PRAGMA", "AUTONOMOUS_TRANSACTION")
+        ]
         assert kws == []
 
 
 class TestQuotedStrings:
-    @pytest.mark.parametrize("opener,closer", [
-        ("[", "]"), ("(", ")"), ("{", "}"), ("<", ">"), ("!", "!"), ("|", "|"),
-    ])
+    @pytest.mark.parametrize(
+        "opener,closer",
+        [
+            ("[", "]"),
+            ("(", ")"),
+            ("{", "}"),
+            ("<", ">"),
+            ("!", "!"),
+            ("|", "|"),
+        ],
+    )
     def test_q_string_paired_delimiters(self, opener, closer):
         src = f"SELECT q'{opener}don't worry{closer}' FROM dual"
         toks = tokenize(src)
@@ -128,7 +141,9 @@ class TestOperators:
         src = f"a {text} b"
         toks = tokenize(src)
         ops = [t for t in toks if t.kind == TokenKind.OPERATOR]
-        assert any(t.text == text for t in ops), f"missing operator {text!r} in {[t.text for t in ops]}"
+        assert any(
+            t.text == text for t in ops
+        ), f"missing operator {text!r} in {[t.text for t in ops]}"
 
     def test_punctuation(self):
         toks = tokenize("foo(1, 2);")

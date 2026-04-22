@@ -3,6 +3,7 @@
 Each rule is independent and returns RuleResult(passed, detail). A case
 passes only when ALL its rules pass.
 """
+
 from __future__ import annotations
 
 import json
@@ -94,13 +95,13 @@ def _min_chars(limit: int, response: str) -> Tuple[bool, str]:
 
 
 _HANDLERS = {
-    "must_contain":         _must_contain,
-    "must_not_contain":     _must_not_contain,
-    "json_must_have_keys":  _json_must_have_keys,
-    "json_path_equals":     _json_path_equals,
-    "json_array_min_len":   _json_array_min_len,
-    "max_chars":            _max_chars,
-    "min_chars":            _min_chars,
+    "must_contain": _must_contain,
+    "must_not_contain": _must_not_contain,
+    "json_must_have_keys": _json_must_have_keys,
+    "json_path_equals": _json_path_equals,
+    "json_array_min_len": _json_array_min_len,
+    "max_chars": _max_chars,
+    "min_chars": _min_chars,
 }
 
 

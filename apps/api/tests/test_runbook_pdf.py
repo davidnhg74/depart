@@ -4,6 +4,7 @@ ReportLab compresses text streams by default; raw byte-substring checks
 miss anything outside the document metadata. We use `pypdf` to extract
 the actual rendered text and assert on that.
 """
+
 import io
 from pathlib import Path
 
@@ -95,10 +96,14 @@ class TestRenderHandlesSpecialCharacters:
 class TestRenderWithoutComplexity:
     def test_renders_with_no_complexity(self):
         ctx = RunbookContext(
-            project_name="Empty", customer="None Corp",
-            source_version="Oracle 19c", target_version="PostgreSQL 16",
-            cutover_window="TBD", rate_per_day=1500,
-            complexity=None, app_impact=None,
+            project_name="Empty",
+            customer="None Corp",
+            source_version="Oracle 19c",
+            target_version="PostgreSQL 16",
+            cutover_window="TBD",
+            rate_per_day=1500,
+            complexity=None,
+            app_impact=None,
         )
         rb = assemble(ctx)
         out = render(rb)

@@ -74,8 +74,16 @@ def render_user_message(*, ctx, complexity, app_impact) -> str:
         rewrite_lines=cx.must_rewrite_lines if cx else 0,
         effort_days=cx.effort_estimate_days if cx else 0,
         cost=int((cx.effort_estimate_days if cx else 0) * ctx.rate_per_day),
-        tier_c=", ".join(sorted(set(cx.tier_c_constructs))) if cx and cx.tier_c_constructs else "(none)",
-        tier_b=", ".join(sorted(set(cx.tier_b_constructs))) if cx and cx.tier_b_constructs else "(none)",
+        tier_c=(
+            ", ".join(sorted(set(cx.tier_c_constructs)))
+            if cx and cx.tier_c_constructs
+            else "(none)"
+        ),
+        tier_b=(
+            ", ".join(sorted(set(cx.tier_b_constructs)))
+            if cx and cx.tier_b_constructs
+            else "(none)"
+        ),
         top_constructs=", ".join(cx.top_10_constructs) if cx and cx.top_10_constructs else "(none)",
         files_scanned=getattr(ai, "total_files_scanned", 0) if ai else 0,
         total_findings=getattr(ai, "total_findings", 0) if ai else 0,

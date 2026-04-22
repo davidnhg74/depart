@@ -27,6 +27,7 @@ inline SQL across diverse codebases without needing a parser per
 language. The risk classifier weights findings by confidence so false
 positives surface as low-confidence findings, not noise.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -47,10 +48,10 @@ from .sql_extractor import (
 
 
 class RiskLevel(str, Enum):
-    LOW = "low"             # mechanical change or no change needed
-    MEDIUM = "medium"       # Oracle-specific function with PG equivalent
-    HIGH = "high"           # Oracle-specific syntax requiring rewrite
-    CRITICAL = "critical"   # server-feature dependency, structural refactor
+    LOW = "low"  # mechanical change or no change needed
+    MEDIUM = "medium"  # Oracle-specific function with PG equivalent
+    HIGH = "high"  # Oracle-specific syntax requiring rewrite
+    CRITICAL = "critical"  # server-feature dependency, structural refactor
 
 
 _RISK_RANK = {RiskLevel.LOW: 0, RiskLevel.MEDIUM: 1, RiskLevel.HIGH: 2, RiskLevel.CRITICAL: 3}
@@ -64,20 +65,45 @@ def _rank(r: RiskLevel) -> int:
 # equivalents — usable as MEDIUM signal. Not exhaustive; the AI layer
 # expands coverage in Phase B2.
 ORACLE_FUNCTION_NAMES: Set[str] = {
-    "NVL", "NVL2", "DECODE", "SYSDATE", "SYSTIMESTAMP", "TRUNC",
-    "ADD_MONTHS", "MONTHS_BETWEEN", "LAST_DAY", "NEXT_DAY",
-    "LISTAGG", "WM_CONCAT", "INSTR", "SUBSTR", "REGEXP_LIKE",
-    "REGEXP_SUBSTR", "TO_CHAR", "TO_DATE", "TO_NUMBER",
-    "DBMS_RANDOM", "USERENV", "SYS_CONTEXT", "SYS_GUID",
+    "NVL",
+    "NVL2",
+    "DECODE",
+    "SYSDATE",
+    "SYSTIMESTAMP",
+    "TRUNC",
+    "ADD_MONTHS",
+    "MONTHS_BETWEEN",
+    "LAST_DAY",
+    "NEXT_DAY",
+    "LISTAGG",
+    "WM_CONCAT",
+    "INSTR",
+    "SUBSTR",
+    "REGEXP_LIKE",
+    "REGEXP_SUBSTR",
+    "TO_CHAR",
+    "TO_DATE",
+    "TO_NUMBER",
+    "DBMS_RANDOM",
+    "USERENV",
+    "SYS_CONTEXT",
+    "SYS_GUID",
 }
 
 # Schema/system identifiers that signal CRITICAL Oracle dependency.
 ORACLE_SYSTEM_IDENTS: Set[str] = {
-    "DUAL",         # legal but signals Oracle-style scalar SELECT
-    "USER_TABLES", "ALL_TABLES", "DBA_TABLES",
-    "USER_TAB_COLUMNS", "ALL_TAB_COLUMNS",
-    "V$SQL", "V$SESSION", "V$VERSION",
-    "USER_OBJECTS", "ALL_OBJECTS", "DBA_OBJECTS",
+    "DUAL",  # legal but signals Oracle-style scalar SELECT
+    "USER_TABLES",
+    "ALL_TABLES",
+    "DBA_TABLES",
+    "USER_TAB_COLUMNS",
+    "ALL_TAB_COLUMNS",
+    "V$SQL",
+    "V$SESSION",
+    "V$VERSION",
+    "USER_OBJECTS",
+    "ALL_OBJECTS",
+    "DBA_OBJECTS",
 }
 
 
@@ -92,7 +118,7 @@ ORACLE_SYSTEM_IDENTS: Set[str] = {
 #     bugs because most ORMs pass the SQL through verbatim.
 #   * Database links: same severity in both contexts.
 _APP_RISK_OVERRIDES: dict = {
-    ConstructTag.DBMS_OUTPUT:     RiskLevel.CRITICAL,
+    ConstructTag.DBMS_OUTPUT: RiskLevel.CRITICAL,
     ConstructTag.OUTER_JOIN_PLUS: RiskLevel.CRITICAL,
 }
 
@@ -116,21 +142,22 @@ def _construct_risk(tag: ConstructTag) -> RiskLevel:
 @dataclass(frozen=True)
 class Finding:
     """One issue at one call site."""
-    code: str                       # dotted machine code, e.g. APP.SQL.SYSDATE
+
+    code: str  # dotted machine code, e.g. APP.SQL.SYSDATE
     risk: RiskLevel
-    message: str                    # human summary
-    suggestion: str                 # what to change in the application code
-    file: str                       # path relative to scan root
-    line: int                       # 1-indexed line of the SQL fragment
-    snippet: str                    # ≤120 chars excerpt of the SQL fragment
-    schema_objects: tuple = ()      # tuple[str] of touched table/view names
-    construct_tags: tuple = ()      # tuple[ConstructTag] detected in the SQL
+    message: str  # human summary
+    suggestion: str  # what to change in the application code
+    file: str  # path relative to scan root
+    line: int  # 1-indexed line of the SQL fragment
+    snippet: str  # ≤120 chars excerpt of the SQL fragment
+    schema_objects: tuple = ()  # tuple[str] of touched table/view names
+    construct_tags: tuple = ()  # tuple[ConstructTag] detected in the SQL
 
 
 @dataclass
 class FileImpact:
     file: str
-    language: str                   # 'java', 'python', ...
+    language: str  # 'java', 'python', ...
     fragments_scanned: int = 0
     findings: List[Finding] = field(default_factory=list)
 
@@ -144,6 +171,7 @@ class FileImpact:
 @dataclass
 class AppImpactReport:
     """Top-level deliverable. Easily JSON-serializable for the API."""
+
     files: List[FileImpact] = field(default_factory=list)
     total_files_scanned: int = 0
     total_fragments: int = 0
@@ -160,8 +188,10 @@ class AppImpactReport:
 
     def top_files(self, *, limit: int = 10) -> List[FileImpact]:
         """Files with the highest single-finding risk, then by finding count."""
+
         def key(fi: FileImpact):
             return (-_rank(fi.max_risk), -len(fi.findings), fi.file)
+
         return sorted(self.files, key=key)[:limit]
 
 
@@ -178,10 +208,12 @@ class AppImpactAnalyzer:
     converted schema"). Without a Module, we still classify by Oracle-
     specific functions and constructs.
     """
+
     schema: Optional[Module] = None
 
-    def analyze_directory(self, root: Path | str,
-                          *, languages: Optional[Sequence[str]] = None) -> AppImpactReport:
+    def analyze_directory(
+        self, root: Path | str, *, languages: Optional[Sequence[str]] = None
+    ) -> AppImpactReport:
         root_path = Path(root)
         if not root_path.exists() or not root_path.is_dir():
             raise ValueError(f"Not a directory: {root}")
@@ -193,15 +225,13 @@ class AppImpactAnalyzer:
                 report.add_file(fi)
         return report
 
-    def analyze_file(self, path: Path,
-                     *, scan_root: Optional[Path] = None) -> Optional[FileImpact]:
+    def analyze_file(self, path: Path, *, scan_root: Optional[Path] = None) -> Optional[FileImpact]:
         extractor = pick_extractor(path)
         if extractor is None:
             return None
         rel = str(path.relative_to(scan_root)) if scan_root else str(path)
         fragments = extract_from_file(path, extractor)
-        fi = FileImpact(file=rel, language=extractor.language,
-                        fragments_scanned=len(fragments))
+        fi = FileImpact(file=rel, language=extractor.language, fragments_scanned=len(fragments))
         for frag in fragments:
             fi.findings.extend(self._classify_fragment(rel, frag))
         return fi
@@ -220,59 +250,67 @@ class AppImpactAnalyzer:
 
         # 1. Each tagged construct → its own finding (HIGH/CRITICAL).
         for tag in sorted(construct_tags, key=lambda t: t.value):
-            findings.append(Finding(
-                code=f"APP.SQL.{tag.value}",
-                risk=_construct_risk(tag),
-                message=f"Application SQL uses {tag.value.replace('_', ' ')}.",
-                suggestion=_suggestion_for_construct(tag),
-                file=file_rel,
-                line=frag.line,
-                snippet=_snippet(frag.sql),
-                schema_objects=tuple(sorted(touched_objs)),
-                construct_tags=(tag,),
-            ))
+            findings.append(
+                Finding(
+                    code=f"APP.SQL.{tag.value}",
+                    risk=_construct_risk(tag),
+                    message=f"Application SQL uses {tag.value.replace('_', ' ')}.",
+                    suggestion=_suggestion_for_construct(tag),
+                    file=file_rel,
+                    line=frag.line,
+                    snippet=_snippet(frag.sql),
+                    schema_objects=tuple(sorted(touched_objs)),
+                    construct_tags=(tag,),
+                )
+            )
 
         # 2. Each Oracle function call → MEDIUM finding.
         for fn in sorted(oracle_funcs):
-            findings.append(Finding(
-                code=f"APP.SQL.FN.{fn}",
-                risk=RiskLevel.MEDIUM,
-                message=f"Application SQL calls Oracle function {fn}().",
-                suggestion=_suggestion_for_function(fn),
-                file=file_rel,
-                line=frag.line,
-                snippet=_snippet(frag.sql),
-                schema_objects=tuple(sorted(touched_objs)),
-            ))
+            findings.append(
+                Finding(
+                    code=f"APP.SQL.FN.{fn}",
+                    risk=RiskLevel.MEDIUM,
+                    message=f"Application SQL calls Oracle function {fn}().",
+                    suggestion=_suggestion_for_function(fn),
+                    file=file_rel,
+                    line=frag.line,
+                    snippet=_snippet(frag.sql),
+                    schema_objects=tuple(sorted(touched_objs)),
+                )
+            )
 
         # 3. System identifier (DUAL, V$..., USER_TABLES) → CRITICAL.
         for ident in sorted(system_idents):
-            findings.append(Finding(
-                code=f"APP.SQL.SYSREF.{ident}",
-                risk=RiskLevel.CRITICAL,
-                message=f"Application SQL references Oracle system object {ident}.",
-                suggestion=_suggestion_for_sysref(ident),
-                file=file_rel,
-                line=frag.line,
-                snippet=_snippet(frag.sql),
-                schema_objects=tuple(sorted(touched_objs)),
-            ))
+            findings.append(
+                Finding(
+                    code=f"APP.SQL.SYSREF.{ident}",
+                    risk=RiskLevel.CRITICAL,
+                    message=f"Application SQL references Oracle system object {ident}.",
+                    suggestion=_suggestion_for_sysref(ident),
+                    file=file_rel,
+                    line=frag.line,
+                    snippet=_snippet(frag.sql),
+                    schema_objects=tuple(sorted(touched_objs)),
+                )
+            )
 
         # 4. Touched objects not present in the converted PG schema → CRITICAL.
         for obj in sorted(unknown_objs):
-            findings.append(Finding(
-                code="APP.SCHEMA.UNKNOWN_OBJECT",
-                risk=RiskLevel.CRITICAL,
-                message=f"Application SQL references {obj}, which is not in the parsed schema.",
-                suggestion=(
-                    f"Confirm {obj} is included in the migration scope, or update the application "
-                    "to reference the renamed object in PostgreSQL."
-                ),
-                file=file_rel,
-                line=frag.line,
-                snippet=_snippet(frag.sql),
-                schema_objects=(obj,),
-            ))
+            findings.append(
+                Finding(
+                    code="APP.SCHEMA.UNKNOWN_OBJECT",
+                    risk=RiskLevel.CRITICAL,
+                    message=f"Application SQL references {obj}, which is not in the parsed schema.",
+                    suggestion=(
+                        f"Confirm {obj} is included in the migration scope, or update the application "
+                        "to reference the renamed object in PostgreSQL."
+                    ),
+                    file=file_rel,
+                    line=frag.line,
+                    snippet=_snippet(frag.sql),
+                    schema_objects=(obj,),
+                )
+            )
 
         return findings
 
@@ -353,17 +391,19 @@ class AppImpactAnalyzer:
     def _unknown_schema_objects(self, touched: Set[str]) -> Set[str]:
         if self.schema is None:
             return set()
-        known = {o.name.upper() for o in self.schema.objects
-                 if o.kind in {ObjectKind.TABLE, ObjectKind.VIEW,
-                               ObjectKind.MATERIALIZED_VIEW, ObjectKind.SYNONYM}}
+        known = {
+            o.name.upper()
+            for o in self.schema.objects
+            if o.kind
+            in {ObjectKind.TABLE, ObjectKind.VIEW, ObjectKind.MATERIALIZED_VIEW, ObjectKind.SYNONYM}
+        }
         return {o for o in touched if o not in known}
 
     # ─── walking ─────────────────────────────────────────────────────────────
 
     def _walk(self, root: Path, languages: Optional[Sequence[str]]) -> Iterable[Path]:
         accept_exts = (
-            EXTRACTORS_BY_LANG_EXTS if languages is None
-            else _exts_for_languages(languages)
+            EXTRACTORS_BY_LANG_EXTS if languages is None else _exts_for_languages(languages)
         )
         for path in root.rglob("*"):
             if path.is_file() and path.suffix.lower() in accept_exts:
@@ -380,40 +420,40 @@ def _snippet(sql: str) -> str:
 
 def _suggestion_for_construct(tag: ConstructTag) -> str:
     return {
-        ConstructTag.CONNECT_BY:    "Rewrite as a recursive CTE (WITH RECURSIVE).",
-        ConstructTag.MERGE:         "PG 15+ supports MERGE; on PG 14, rewrite as INSERT ... ON CONFLICT.",
-        ConstructTag.ROWNUM:        "Replace ROWNUM with ROW_NUMBER() OVER (ORDER BY ...) or LIMIT.",
-        ConstructTag.ROWID:         "Replace ROWID with the natural primary key; CTID is not stable across writes.",
-        ConstructTag.DBLINK:        "Replace database links with postgres_fdw or move the join into the application.",
-        ConstructTag.DBMS_OUTPUT:   "Replace DBMS_OUTPUT.PUT_LINE with RAISE NOTICE or remove the print.",
-        ConstructTag.DBMS_SCHEDULER:"Move scheduling out of the database (pg_cron or external scheduler).",
-        ConstructTag.DBMS_AQ:       "Replace Oracle AQ with PGMQ, LISTEN/NOTIFY, or an external broker.",
-        ConstructTag.DBMS_CRYPTO:   "Replace DBMS_CRYPTO calls with the pgcrypto extension.",
+        ConstructTag.CONNECT_BY: "Rewrite as a recursive CTE (WITH RECURSIVE).",
+        ConstructTag.MERGE: "PG 15+ supports MERGE; on PG 14, rewrite as INSERT ... ON CONFLICT.",
+        ConstructTag.ROWNUM: "Replace ROWNUM with ROW_NUMBER() OVER (ORDER BY ...) or LIMIT.",
+        ConstructTag.ROWID: "Replace ROWID with the natural primary key; CTID is not stable across writes.",
+        ConstructTag.DBLINK: "Replace database links with postgres_fdw or move the join into the application.",
+        ConstructTag.DBMS_OUTPUT: "Replace DBMS_OUTPUT.PUT_LINE with RAISE NOTICE or remove the print.",
+        ConstructTag.DBMS_SCHEDULER: "Move scheduling out of the database (pg_cron or external scheduler).",
+        ConstructTag.DBMS_AQ: "Replace Oracle AQ with PGMQ, LISTEN/NOTIFY, or an external broker.",
+        ConstructTag.DBMS_CRYPTO: "Replace DBMS_CRYPTO calls with the pgcrypto extension.",
         ConstructTag.OUTER_JOIN_PLUS: "Rewrite (+) outer joins as ANSI LEFT/RIGHT OUTER JOIN.",
     }.get(tag, f"Rewrite the {tag.value.replace('_', ' ')} usage for PostgreSQL.")
 
 
 def _suggestion_for_function(fn: str) -> str:
     return {
-        "NVL":          "Replace NVL(x, y) with COALESCE(x, y).",
-        "NVL2":         "Replace NVL2(e, a, b) with CASE WHEN e IS NOT NULL THEN a ELSE b END.",
-        "DECODE":       "Replace DECODE(...) with CASE WHEN ... END.",
-        "SYSDATE":      "Replace SYSDATE with CURRENT_TIMESTAMP (PG DATE has no time component).",
+        "NVL": "Replace NVL(x, y) with COALESCE(x, y).",
+        "NVL2": "Replace NVL2(e, a, b) with CASE WHEN e IS NOT NULL THEN a ELSE b END.",
+        "DECODE": "Replace DECODE(...) with CASE WHEN ... END.",
+        "SYSDATE": "Replace SYSDATE with CURRENT_TIMESTAMP (PG DATE has no time component).",
         "SYSTIMESTAMP": "Replace SYSTIMESTAMP with CURRENT_TIMESTAMP.",
-        "ADD_MONTHS":   "Replace ADD_MONTHS(d, n) with d + (n || ' months')::interval.",
+        "ADD_MONTHS": "Replace ADD_MONTHS(d, n) with d + (n || ' months')::interval.",
         "MONTHS_BETWEEN": "Compute manually or use age()/extract(); MONTHS_BETWEEN has no exact PG equivalent.",
-        "LISTAGG":      "Replace LISTAGG with STRING_AGG.",
-        "WM_CONCAT":    "Replace WM_CONCAT with STRING_AGG.",
-        "INSTR":        "Replace INSTR with POSITION(... IN ...) or strpos().",
-        "SUBSTR":       "PG SUBSTRING semantics differ slightly; verify negative-start behavior.",
-        "REGEXP_LIKE":  "Replace REGEXP_LIKE(s, p) with `s ~ p`.",
-        "TO_CHAR":      "TO_CHAR exists in PG but format-string semantics differ; review.",
-        "TO_DATE":      "TO_DATE exists in PG but format-string semantics differ; review.",
-        "TO_NUMBER":    "Replace with `value::numeric` or `CAST(value AS numeric)`.",
-        "DBMS_RANDOM":  "Replace DBMS_RANDOM with random() or gen_random_uuid().",
-        "USERENV":      "Replace USERENV(...) with current_user / current_database() / inet_client_addr().",
-        "SYS_CONTEXT":  "Replace SYS_CONTEXT with current_setting() or application-managed state.",
-        "SYS_GUID":     "Replace SYS_GUID with gen_random_uuid() (pgcrypto) or uuid_generate_v4 (uuid-ossp).",
+        "LISTAGG": "Replace LISTAGG with STRING_AGG.",
+        "WM_CONCAT": "Replace WM_CONCAT with STRING_AGG.",
+        "INSTR": "Replace INSTR with POSITION(... IN ...) or strpos().",
+        "SUBSTR": "PG SUBSTRING semantics differ slightly; verify negative-start behavior.",
+        "REGEXP_LIKE": "Replace REGEXP_LIKE(s, p) with `s ~ p`.",
+        "TO_CHAR": "TO_CHAR exists in PG but format-string semantics differ; review.",
+        "TO_DATE": "TO_DATE exists in PG but format-string semantics differ; review.",
+        "TO_NUMBER": "Replace with `value::numeric` or `CAST(value AS numeric)`.",
+        "DBMS_RANDOM": "Replace DBMS_RANDOM with random() or gen_random_uuid().",
+        "USERENV": "Replace USERENV(...) with current_user / current_database() / inet_client_addr().",
+        "SYS_CONTEXT": "Replace SYS_CONTEXT with current_setting() or application-managed state.",
+        "SYS_GUID": "Replace SYS_GUID with gen_random_uuid() (pgcrypto) or uuid_generate_v4 (uuid-ossp).",
     }.get(fn, f"Review {fn}() usage for PG compatibility.")
 
 
@@ -442,10 +482,10 @@ def _exts_for_languages(langs: Sequence[str]) -> Set[str]:
 
 
 _LANG_TO_EXTS = {
-    "java":    {".java"},
-    "python":  {".py"},
-    "sql":     {".sql"},
-    "csharp":  {".cs"},
+    "java": {".java"},
+    "python": {".py"},
+    "sql": {".sql"},
+    "csharp": {".cs"},
     "mybatis": {".xml"},
 }
 EXTRACTORS_BY_LANG_EXTS: Set[str] = set().union(*_LANG_TO_EXTS.values())

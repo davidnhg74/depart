@@ -31,10 +31,7 @@ class TestWorkflowEndpoints:
 
     def test_create_workflow(self, client):
         """Test creating a new workflow."""
-        response = client.post(
-            "/api/v3/workflow/create",
-            json={"name": "Test Migration Workflow"}
-        )
+        response = client.post("/api/v3/workflow/create", json={"name": "Test Migration Workflow"})
 
         assert response.status_code == 200
         data = response.json()
@@ -46,8 +43,7 @@ class TestWorkflowEndpoints:
         """Test creating workflow with migration reference."""
         migration_id = str(uuid.uuid4())
         response = client.post(
-            "/api/v3/workflow/create",
-            json={"name": "Test", "migration_id": migration_id}
+            "/api/v3/workflow/create", json={"name": "Test", "migration_id": migration_id}
         )
 
         assert response.status_code == 200
@@ -57,10 +53,7 @@ class TestWorkflowEndpoints:
     def test_get_workflow(self, client):
         """Test retrieving workflow details."""
         # First create a workflow
-        create_resp = client.post(
-            "/api/v3/workflow/create",
-            json={"name": "Test"}
-        )
+        create_resp = client.post("/api/v3/workflow/create", json={"name": "Test"})
         workflow_id = create_resp.json()["id"]
 
         # Then retrieve it
@@ -81,16 +74,13 @@ class TestWorkflowEndpoints:
     def test_approve_workflow_step(self, client):
         """Test approving a workflow step."""
         # Create workflow
-        create_resp = client.post(
-            "/api/v3/workflow/create",
-            json={"name": "Test"}
-        )
+        create_resp = client.post("/api/v3/workflow/create", json={"name": "Test"})
         workflow_id = create_resp.json()["id"]
 
         # Approve step 1
         response = client.post(
             f"/api/v3/workflow/{workflow_id}/approve/1",
-            json={"approved_by": "John DBA", "notes": "Looks good"}
+            json={"approved_by": "John DBA", "notes": "Looks good"},
         )
 
         assert response.status_code == 200
@@ -102,16 +92,13 @@ class TestWorkflowEndpoints:
     def test_reject_workflow_step(self, client):
         """Test rejecting a workflow step."""
         # Create workflow
-        create_resp = client.post(
-            "/api/v3/workflow/create",
-            json={"name": "Test"}
-        )
+        create_resp = client.post("/api/v3/workflow/create", json={"name": "Test"})
         workflow_id = create_resp.json()["id"]
 
         # Reject step 1
         response = client.post(
             f"/api/v3/workflow/{workflow_id}/reject/1",
-            json={"reason": "Needs more review", "notes": "Check schema first"}
+            json={"reason": "Needs more review", "notes": "Check schema first"},
         )
 
         assert response.status_code == 200
@@ -122,22 +109,15 @@ class TestWorkflowEndpoints:
     def test_update_workflow_settings(self, client):
         """Test updating workflow settings."""
         # Create workflow
-        create_resp = client.post(
-            "/api/v3/workflow/create",
-            json={"name": "Test"}
-        )
+        create_resp = client.post("/api/v3/workflow/create", json={"name": "Test"})
         workflow_id = create_resp.json()["id"]
 
         # Update settings
         response = client.post(
             f"/api/v3/workflow/{workflow_id}/settings",
             json={
-                "settings": {
-                    "parallel_tables": True,
-                    "batch_size": 5000,
-                    "timeout_seconds": 3600
-                }
-            }
+                "settings": {"parallel_tables": True, "batch_size": 5000, "timeout_seconds": 3600}
+            },
         )
 
         assert response.status_code == 200
@@ -148,10 +128,7 @@ class TestWorkflowEndpoints:
     def test_get_workflow_progress(self, client):
         """Test getting workflow progress."""
         # Create workflow
-        create_resp = client.post(
-            "/api/v3/workflow/create",
-            json={"name": "Test"}
-        )
+        create_resp = client.post("/api/v3/workflow/create", json={"name": "Test"})
         workflow_id = create_resp.json()["id"]
 
         # Get progress
@@ -166,17 +143,13 @@ class TestWorkflowEndpoints:
     def test_workflow_progression(self, client):
         """Test workflow advancing through multiple steps."""
         # Create workflow
-        create_resp = client.post(
-            "/api/v3/workflow/create",
-            json={"name": "Test Progression"}
-        )
+        create_resp = client.post("/api/v3/workflow/create", json={"name": "Test Progression"})
         workflow_id = create_resp.json()["id"]
 
         # Progress through steps
         for step in range(1, 6):
             response = client.post(
-                f"/api/v3/workflow/{workflow_id}/approve/{step}",
-                json={"approved_by": "DBA"}
+                f"/api/v3/workflow/{workflow_id}/approve/{step}", json={"approved_by": "DBA"}
             )
             assert response.status_code == 200
             assert response.json()["current_step"] == step + 1
@@ -192,7 +165,13 @@ class TestPermissionEndpoints:
                 {"grantee": "SCOTT", "privilege": "CREATE TABLE", "admin_option": "YES"}
             ],
             "object_privs": [
-                {"grantee": "SCOTT", "owner": "SYS", "table_name": "V$SQL", "privilege": "SELECT", "grantable": "NO"}
+                {
+                    "grantee": "SCOTT",
+                    "owner": "SYS",
+                    "table_name": "V$SQL",
+                    "privilege": "SELECT",
+                    "grantable": "NO",
+                }
             ],
             "role_grants": [],
             "dba_users": [],
@@ -200,8 +179,7 @@ class TestPermissionEndpoints:
         }
 
         response = client.post(
-            "/api/v3/analyze/permissions",
-            json={"oracle_privileges_json": json.dumps(oracle_privs)}
+            "/api/v3/analyze/permissions", json={"oracle_privileges_json": json.dumps(oracle_privs)}
         )
 
         assert response.status_code == 200
@@ -213,18 +191,14 @@ class TestPermissionEndpoints:
 
     def test_analyze_permissions_missing_input(self, client):
         """Test permission analysis with missing input."""
-        response = client.post(
-            "/api/v3/analyze/permissions",
-            json={}
-        )
+        response = client.post("/api/v3/analyze/permissions", json={})
 
         assert response.status_code == 400
 
     def test_analyze_permissions_via_connection(self, client):
         """Test permission analysis via connection ID (should be 501 Not Implemented for now)."""
         response = client.post(
-            "/api/v3/analyze/permissions",
-            json={"oracle_connection_id": "conn-123"}
+            "/api/v3/analyze/permissions", json={"oracle_connection_id": "conn-123"}
         )
 
         assert response.status_code == 501
@@ -236,8 +210,7 @@ class TestBenchmarkEndpoints:
     def test_capture_oracle_benchmark(self, client):
         """Test Oracle benchmark capture (should be 501 for now)."""
         response = client.post(
-            "/api/v3/benchmark/capture-oracle",
-            json={"oracle_connection_id": "oracle-1"}
+            "/api/v3/benchmark/capture-oracle", json={"oracle_connection_id": "oracle-1"}
         )
 
         # Not implemented yet
@@ -246,8 +219,7 @@ class TestBenchmarkEndpoints:
     def test_capture_postgres_benchmark(self, client):
         """Test PostgreSQL benchmark capture (should be 501 for now)."""
         response = client.post(
-            "/api/v3/benchmark/capture-postgres",
-            json={"postgres_connection_id": "pg-1"}
+            "/api/v3/benchmark/capture-postgres", json={"postgres_connection_id": "pg-1"}
         )
 
         # Not implemented yet
@@ -284,17 +256,13 @@ class TestEndpointIntegration:
     def test_full_workflow_scenario(self, client):
         """Test a complete workflow scenario."""
         # 1. Create workflow
-        workflow_resp = client.post(
-            "/api/v3/workflow/create",
-            json={"name": "Full Migration Test"}
-        )
+        workflow_resp = client.post("/api/v3/workflow/create", json={"name": "Full Migration Test"})
         assert workflow_resp.status_code == 200
         workflow_id = workflow_resp.json()["id"]
 
         # 2. Update settings
         settings_resp = client.post(
-            f"/api/v3/workflow/{workflow_id}/settings",
-            json={"settings": {"dry_run": True}}
+            f"/api/v3/workflow/{workflow_id}/settings", json={"settings": {"dry_run": True}}
         )
         assert settings_resp.status_code == 200
 
@@ -305,8 +273,7 @@ class TestEndpointIntegration:
 
         # 4. Approve first step
         approve_resp = client.post(
-            f"/api/v3/workflow/{workflow_id}/approve/1",
-            json={"approved_by": "DBA1"}
+            f"/api/v3/workflow/{workflow_id}/approve/1", json={"approved_by": "DBA1"}
         )
         assert approve_resp.status_code == 200
         assert approve_resp.json()["current_step"] == 2

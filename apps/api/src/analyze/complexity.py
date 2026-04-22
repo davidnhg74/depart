@@ -5,6 +5,7 @@ effort estimate are computed deterministically — no AI in this path. The
 report is the analyzer-endpoint output; it also feeds the cost calculator and
 the runbook generator.
 """
+
 from __future__ import annotations
 
 import math
@@ -31,9 +32,9 @@ TIER_LOC_WEIGHT = {Tier.A: 1, Tier.B: 5, Tier.C: 20}
 # Effort calibration (engineer-days per LOC). These are coarse industry
 # averages; the cost calculator can override them per-engagement.
 EFFORT_DAYS_PER_LOC = {
-    Tier.A: 0.0001,     # 0.1 day per 1,000 lines (auto-converted)
-    Tier.B: 0.005,      # 0.5 day per 100 lines (review + small fix)
-    Tier.C: 0.02,       # 2.0 days per 100 lines (refactor)
+    Tier.A: 0.0001,  # 0.1 day per 1,000 lines (auto-converted)
+    Tier.B: 0.005,  # 0.5 day per 100 lines (review + small fix)
+    Tier.C: 0.02,  # 2.0 days per 100 lines (refactor)
 }
 MIN_EFFORT_DAYS = 0.5
 
@@ -151,13 +152,12 @@ def _tier_rank(t: Tier) -> int:
     return {Tier.A: 0, Tier.B: 1, Tier.C: 2}[t]
 
 
-def _calc_score(total_lines: int, tier_lines: Dict[Tier, int],
-                counts: Counter) -> int:
+def _calc_score(total_lines: int, tier_lines: Dict[Tier, int], counts: Counter) -> int:
     """Bounded 1..100. Tier C dominates; log-scaled by file size."""
     weighted_loc = sum(tier_lines[t] * TIER_LOC_WEIGHT[t] for t in tier_lines)
     if total_lines <= 0:
         return 1
-    density = weighted_loc / total_lines      # 1.0 = pure Tier A; >5 = lots of B; >20 = lots of C
+    density = weighted_loc / total_lines  # 1.0 = pure Tier A; >5 = lots of B; >20 = lots of C
     size_factor = math.log10(max(total_lines, 1)) * 5
     raw = density * 4 + size_factor
     # Per-construct presence boosts: Tier C constructs warrant attention even

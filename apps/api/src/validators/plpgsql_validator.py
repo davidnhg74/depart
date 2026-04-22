@@ -2,6 +2,7 @@
 Validate that converted PL/pgSQL is syntactically correct.
 This is critical: we reject any hallucinated syntax before returning to user.
 """
+
 import re
 import logging
 from dataclasses import dataclass
@@ -106,7 +107,9 @@ class PlPgSQLValidator:
 
         # RETURNS clause should appear in function definition
         if re.search(r"\bRETURNS\b", code, re.IGNORECASE):
-            if not re.search(r"\b(?:CREATE|FUNCTION)\b.*\bRETURNS\b", code, re.IGNORECASE | re.DOTALL):
+            if not re.search(
+                r"\b(?:CREATE|FUNCTION)\b.*\bRETURNS\b", code, re.IGNORECASE | re.DOTALL
+            ):
                 errors.append("RETURNS keyword found but not in function definition")
 
         # AS keyword should appear after function signature
@@ -130,7 +133,9 @@ class PlPgSQLValidator:
         errors = []
 
         # Extract function definition
-        func_pattern = r"CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(\w+)\s*\((.*?)\)\s+RETURNS\s+(\w+)"
+        func_pattern = (
+            r"CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(\w+)\s*\((.*?)\)\s+RETURNS\s+(\w+)"
+        )
         match = re.search(func_pattern, code, re.IGNORECASE | re.DOTALL)
 
         if match:

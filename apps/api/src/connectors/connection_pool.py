@@ -52,7 +52,9 @@ class ConnectionPool:
         self.max_idle_seconds = max_idle_seconds
 
         self.pools: Dict[str, Queue] = {}  # connection_id -> Queue of available connections
-        self.active_connections: Dict[str, List[Any]] = {}  # connection_id -> list of active connectors
+        self.active_connections: Dict[str, List[Any]] = (
+            {}
+        )  # connection_id -> list of active connectors
         self.stats: Dict[str, ConnectionStats] = {}  # connection_id -> stats
         self.locks: Dict[str, threading.RLock] = {}  # per-connection locking
 

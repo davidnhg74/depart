@@ -1,4 +1,5 @@
 """Tests for the AI runbook narrative generator."""
+
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -17,9 +18,12 @@ def ctx():
     src = (FIXTURES / "schema" / "schema.sql").read_text()
     cx = analyze_complexity(src, rate_per_day=1500)
     return RunbookContext(
-        project_name="ACME", customer="ACME Corp",
-        source_version="Oracle 19c", target_version="PostgreSQL 16",
-        cutover_window="2026-06-15 02:00 UTC", rate_per_day=1500,
+        project_name="ACME",
+        customer="ACME Corp",
+        source_version="Oracle 19c",
+        target_version="PostgreSQL 16",
+        cutover_window="2026-06-15 02:00 UTC",
+        rate_per_day=1500,
         complexity=cx,
     )
 

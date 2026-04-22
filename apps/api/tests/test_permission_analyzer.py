@@ -40,17 +40,38 @@ class TestOraclePrivilegeExtractor:
         # Mock DBA privilege queries
         sys_privs_result = Mock()
         sys_privs_result.mappings.return_value.all.return_value = [
-            Mock(items=lambda: [("grantee", "SCOTT"), ("privilege", "CREATE TABLE"), ("admin_option", "YES")])
+            Mock(
+                items=lambda: [
+                    ("grantee", "SCOTT"),
+                    ("privilege", "CREATE TABLE"),
+                    ("admin_option", "YES"),
+                ]
+            )
         ]
 
         obj_privs_result = Mock()
         obj_privs_result.mappings.return_value.all.return_value = [
-            Mock(items=lambda: [("grantee", "SCOTT"), ("owner", "SYS"), ("table_name", "V$SQL"), ("privilege", "SELECT"), ("grantable", "NO")])
+            Mock(
+                items=lambda: [
+                    ("grantee", "SCOTT"),
+                    ("owner", "SYS"),
+                    ("table_name", "V$SQL"),
+                    ("privilege", "SELECT"),
+                    ("grantable", "NO"),
+                ]
+            )
         ]
 
         role_privs_result = Mock()
         role_privs_result.mappings.return_value.all.return_value = [
-            Mock(items=lambda: [("grantee", "SCOTT"), ("granted_role", "DBA"), ("admin_option", "NO"), ("default_role", "YES")])
+            Mock(
+                items=lambda: [
+                    ("grantee", "SCOTT"),
+                    ("granted_role", "DBA"),
+                    ("admin_option", "NO"),
+                    ("default_role", "YES"),
+                ]
+            )
         ]
 
         dba_users_result = Mock()
@@ -80,14 +101,35 @@ class TestOraclePrivilegeExtractor:
 
         # First call (DBA path) raises exception
         from sqlalchemy.exc import DatabaseError
+
         mock_session.execute.side_effect = [
             DatabaseError("Access denied", None, None),  # DBA path fails
-            Mock(mappings=Mock(return_value=Mock(all=Mock(return_value=[
-                Mock(items=lambda: [("privilege", "CREATE TABLE")])
-            ])))),  # session_privs succeeds
-            Mock(mappings=Mock(return_value=Mock(all=Mock(return_value=[
-                Mock(items=lambda: [("grantee", "USER"), ("owner", "SCOTT"), ("table_name", "EMP"), ("privilege", "SELECT"), ("grantable", "NO")])
-            ])))),  # user_tab_privs succeeds
+            Mock(
+                mappings=Mock(
+                    return_value=Mock(
+                        all=Mock(return_value=[Mock(items=lambda: [("privilege", "CREATE TABLE")])])
+                    )
+                )
+            ),  # session_privs succeeds
+            Mock(
+                mappings=Mock(
+                    return_value=Mock(
+                        all=Mock(
+                            return_value=[
+                                Mock(
+                                    items=lambda: [
+                                        ("grantee", "USER"),
+                                        ("owner", "SCOTT"),
+                                        ("table_name", "EMP"),
+                                        ("privilege", "SELECT"),
+                                        ("grantable", "NO"),
+                                    ]
+                                )
+                            ]
+                        )
+                    )
+                )
+            ),  # user_tab_privs succeeds
         ]
 
         result = extractor.extract(mock_connector)
@@ -147,7 +189,13 @@ class TestPermissionMapper:
                 {"grantee": "SCOTT", "privilege": "SELECT ANY TABLE", "admin_option": "NO"},
             ],
             object_privs=[
-                {"grantee": "SCOTT", "owner": "SYS", "table_name": "V$SQL", "privilege": "SELECT", "grantable": "NO"},
+                {
+                    "grantee": "SCOTT",
+                    "owner": "SYS",
+                    "table_name": "V$SQL",
+                    "privilege": "SELECT",
+                    "grantable": "NO",
+                },
             ],
             role_grants=[],
             dba_users=[],
@@ -198,13 +246,15 @@ class TestPermissionAnalyzer:
 
     def test_analyze_from_json(self, analyzer):
         """Test analyzing from JSON input."""
-        json_input = json.dumps({
-            "system_privs": [{"grantee": "USER1", "privilege": "CREATE TABLE"}],
-            "object_privs": [],
-            "role_grants": [],
-            "dba_users": [],
-            "extracted_as_dba": True,
-        })
+        json_input = json.dumps(
+            {
+                "system_privs": [{"grantee": "USER1", "privilege": "CREATE TABLE"}],
+                "object_privs": [],
+                "role_grants": [],
+                "dba_users": [],
+                "extracted_as_dba": True,
+            }
+        )
 
         result = analyzer.analyze_from_json(json_input)
 

@@ -27,6 +27,7 @@ Token telemetry:
     on the singleton TokenLedger; the cost calculator and the per-project
     audit trail read from it.
 """
+
 from __future__ import annotations
 
 import json
@@ -62,7 +63,7 @@ class TokenUsage:
     cache_read_input_tokens: int = 0
     cache_creation_input_tokens: int = 0
     latency_ms: float = 0.0
-    feature: str = ""               # "app_impact", "semantic", ...
+    feature: str = ""  # "app_impact", "semantic", ...
 
     def total(self) -> int:
         return self.input_tokens + self.output_tokens
@@ -109,7 +110,7 @@ class AIClient:
     model: str = DEFAULT_MODEL
     max_tokens: int = DEFAULT_MAX_TOKENS
     max_retries: int = DEFAULT_MAX_RETRIES
-    feature: str = "default"        # tags telemetry for cost attribution
+    feature: str = "default"  # tags telemetry for cost attribution
     api_key: Optional[str] = None
 
     def __post_init__(self) -> None:
@@ -146,8 +147,9 @@ class AIClient:
         repeated calls in the same window pay cache-read pricing.
         """
         sys_blocks = self._maybe_cache(system, cacheable=cache_system)
-        return self._call(system_blocks=sys_blocks, user=user,
-                          max_tokens=max_tokens or self.max_tokens)
+        return self._call(
+            system_blocks=sys_blocks, user=user, max_tokens=max_tokens or self.max_tokens
+        )
 
     def complete_json(
         self,
@@ -163,14 +165,14 @@ class AIClient:
         unparseable output rather than retrying with a "fix your JSON"
         round-trip — JSON quality is the prompt's responsibility.
         """
-        text = self.complete(system=system, user=user,
-                             cache_system=cache_system, max_tokens=max_tokens)
+        text = self.complete(
+            system=system, user=user, cache_system=cache_system, max_tokens=max_tokens
+        )
         return _parse_json(text)
 
     # ─── Internals ───────────────────────────────────────────────────────────
 
-    def _call(self, *, system_blocks: List[Dict[str, Any]], user: str,
-              max_tokens: int) -> str:
+    def _call(self, *, system_blocks: List[Dict[str, Any]], user: str, max_tokens: int) -> str:
         t0 = time.perf_counter()
         try:
             msg = self._client.messages.create(
@@ -187,15 +189,17 @@ class AIClient:
             raise
         latency = (time.perf_counter() - t0) * 1000.0
         usage = getattr(msg, "usage", None)
-        _LEDGER.record(TokenUsage(
-            model=self.model,
-            input_tokens=getattr(usage, "input_tokens", 0) or 0,
-            output_tokens=getattr(usage, "output_tokens", 0) or 0,
-            cache_read_input_tokens=getattr(usage, "cache_read_input_tokens", 0) or 0,
-            cache_creation_input_tokens=getattr(usage, "cache_creation_input_tokens", 0) or 0,
-            latency_ms=latency,
-            feature=self.feature,
-        ))
+        _LEDGER.record(
+            TokenUsage(
+                model=self.model,
+                input_tokens=getattr(usage, "input_tokens", 0) or 0,
+                output_tokens=getattr(usage, "output_tokens", 0) or 0,
+                cache_read_input_tokens=getattr(usage, "cache_read_input_tokens", 0) or 0,
+                cache_creation_input_tokens=getattr(usage, "cache_creation_input_tokens", 0) or 0,
+                latency_ms=latency,
+                feature=self.feature,
+            )
+        )
         # `msg.content` is a list of content blocks; we expect text.
         for block in msg.content:
             if getattr(block, "type", None) == "text":

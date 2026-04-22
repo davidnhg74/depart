@@ -7,6 +7,7 @@ without Java should still pass `make test`.
 
 Once the ANTLR path is the only one that ships, this file goes away.
 """
+
 import pytest
 
 from src.source.oracle import _visitor

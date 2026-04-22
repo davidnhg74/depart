@@ -6,7 +6,7 @@ from pathlib import Path
 def hr_schema_content():
     """Load Oracle HR schema for testing."""
     schema_path = Path(__file__).parent / "fixtures" / "hr_schema" / "hr_schema.sql"
-    with open(schema_path, 'r') as f:
+    with open(schema_path, "r") as f:
         return f.read()
 
 

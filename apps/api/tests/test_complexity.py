@@ -4,6 +4,7 @@ These run against the interim parser today and against the ANTLR-backed
 parser as soon as `make grammar` produces it — the assertions are written
 against the public ComplexityReport contract, not parser internals.
 """
+
 import pytest
 
 from src.analyze.complexity import ComplexityScorer, analyze
@@ -27,9 +28,14 @@ class TestComplexityScorer:
         # The HR fixture has multiple objects across kinds.
         assert report.total_lines > 50
         kinds = report.objects_by_kind
-        assert any(k in kinds for k in (
-            ObjectKind.PROCEDURE.value, ObjectKind.FUNCTION.value, ObjectKind.PACKAGE.value
-        )), f"expected procedural objects, got {kinds}"
+        assert any(
+            k in kinds
+            for k in (
+                ObjectKind.PROCEDURE.value,
+                ObjectKind.FUNCTION.value,
+                ObjectKind.PACKAGE.value,
+            )
+        ), f"expected procedural objects, got {kinds}"
 
     def test_complex_plsql_detects_tier_constructs(self, scorer, complex_plsql):
         report = scorer.analyze(complex_plsql)
@@ -43,23 +49,27 @@ class TestComplexityScorer:
     def test_string_literal_does_not_match_keyword(self):
         """The interim regex parser scored `'CONNECT BY'` inside a string as
         a CONNECT BY use. Verify the new tokenizer does not."""
-        report = analyze("""
+        report = analyze(
+            """
             CREATE OR REPLACE PROCEDURE log_msg AS
             BEGIN
                 INSERT INTO audit_log (msg) VALUES ('CONNECT BY in a string');
             END;
-        """)
+        """
+        )
         assert ConstructTag.CONNECT_BY.value not in report.construct_counts
 
     def test_comment_does_not_match_keyword(self):
         """`-- MERGE INTO` in a comment must not register."""
-        report = analyze("""
+        report = analyze(
+            """
             CREATE OR REPLACE PROCEDURE p AS
             BEGIN
                 -- MERGE INTO is documented elsewhere
                 NULL;
             END;
-        """)
+        """
+        )
         assert ConstructTag.MERGE.value not in report.construct_counts
 
     def test_effort_estimation(self, scorer, hr_schema_content):

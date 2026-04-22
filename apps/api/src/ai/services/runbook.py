@@ -5,6 +5,7 @@ and risk narrative. Failures degrade gracefully — if the LLM call fails
 or no API key is configured, we still produce a runbook with the
 deterministic default sections.
 """
+
 from __future__ import annotations
 
 import logging
@@ -33,7 +34,9 @@ class RunbookGenerator:
         risk_narrative = ""
         try:
             user = render_user_message(
-                ctx=ctx, complexity=ctx.complexity, app_impact=ctx.app_impact,
+                ctx=ctx,
+                complexity=ctx.complexity,
+                app_impact=ctx.app_impact,
             )
             data = self.client.complete_json(system=SYSTEM_PROMPT, user=user)
             executive_summary = str(data.get("executive_summary", "")).strip()

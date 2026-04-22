@@ -28,12 +28,7 @@ class ErrorResponse(APIResponse):
     """Standard error response."""
 
     def __init__(self, error: str, error_code: str = "UNKNOWN", status_code: int = 500, **kwargs):
-        super().__init__(
-            success=False,
-            error=error,
-            error_code=error_code,
-            **kwargs
-        )
+        super().__init__(success=False, error=error, error_code=error_code, **kwargs)
         self.status_code = status_code
 
 
@@ -41,12 +36,7 @@ class ValidationErrorResponse(ErrorResponse):
     """Validation error response with field details."""
 
     def __init__(self, message: str, validation_errors: Dict[str, str] = None, **kwargs):
-        super().__init__(
-            error=message,
-            error_code="VALIDATION_ERROR",
-            status_code=422,
-            **kwargs
-        )
+        super().__init__(error=message, error_code="VALIDATION_ERROR", status_code=422, **kwargs)
         self.validation_errors = validation_errors or {}
 
 
@@ -55,10 +45,7 @@ class RateLimitResponse(ErrorResponse):
 
     def __init__(self, remaining: int = 0, reset_at: str = None, **kwargs):
         super().__init__(
-            error="Rate limit exceeded",
-            error_code="RATE_LIMIT_EXCEEDED",
-            status_code=429,
-            **kwargs
+            error="Rate limit exceeded", error_code="RATE_LIMIT_EXCEEDED", status_code=429, **kwargs
         )
         self.remaining = remaining
         self.reset_at = reset_at
@@ -72,37 +59,21 @@ class NotFoundResponse(ErrorResponse):
         if resource_id:
             message += f": {resource_id}"
 
-        super().__init__(
-            error=message,
-            error_code="NOT_FOUND",
-            status_code=404,
-            **kwargs
-        )
+        super().__init__(error=message, error_code="NOT_FOUND", status_code=404, **kwargs)
 
 
 class SuccessResponse(APIResponse):
     """Success response with data."""
 
     def __init__(self, data: Any = None, message: str = "Success", **kwargs):
-        super().__init__(
-            success=True,
-            data=data,
-            **kwargs
-        )
+        super().__init__(success=True, data=data, **kwargs)
         self.message = message
 
 
 class PaginatedResponse(APIResponse):
     """Paginated data response."""
 
-    def __init__(
-        self,
-        items: List[Any],
-        total: int,
-        page: int = 1,
-        page_size: int = 20,
-        **kwargs
-    ):
+    def __init__(self, items: List[Any], total: int, page: int = 1, page_size: int = 20, **kwargs):
         super().__init__(
             success=True,
             data={
@@ -112,9 +83,9 @@ class PaginatedResponse(APIResponse):
                     "page": page,
                     "page_size": page_size,
                     "total_pages": (total + page_size - 1) // page_size,
-                }
+                },
             },
-            **kwargs
+            **kwargs,
         )
 
 
@@ -122,12 +93,7 @@ class OperationResponse(APIResponse):
     """Response for async operations (jobs, migrations, etc.)."""
 
     def __init__(
-        self,
-        operation_id: str,
-        status: str,
-        progress: float = 0.0,
-        message: str = None,
-        **kwargs
+        self, operation_id: str, status: str, progress: float = 0.0, message: str = None, **kwargs
     ):
         super().__init__(
             success=True,
@@ -137,7 +103,7 @@ class OperationResponse(APIResponse):
                 "progress": progress,
                 "message": message,
             },
-            **kwargs
+            **kwargs,
         )
 
 

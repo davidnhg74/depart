@@ -33,9 +33,9 @@ class TestCheckpointManager:
         migration_id = manager.create_migration("test-schema")
 
         assert migration_id is not None
-        migration = db.query(MigrationRecord).filter(
-            MigrationRecord.id == uuid.UUID(migration_id)
-        ).first()
+        migration = (
+            db.query(MigrationRecord).filter(MigrationRecord.id == uuid.UUID(migration_id)).first()
+        )
 
         assert migration.schema_name == "test-schema"
         assert migration.status == "pending"
@@ -53,10 +53,14 @@ class TestCheckpointManager:
             status="in_progress",
         )
 
-        checkpoint = db.query(MigrationCheckpointRecord).filter(
-            MigrationCheckpointRecord.migration_id == uuid.UUID(migration_id),
-            MigrationCheckpointRecord.table_name == "CUSTOMERS",
-        ).first()
+        checkpoint = (
+            db.query(MigrationCheckpointRecord)
+            .filter(
+                MigrationCheckpointRecord.migration_id == uuid.UUID(migration_id),
+                MigrationCheckpointRecord.table_name == "CUSTOMERS",
+            )
+            .first()
+        )
 
         assert checkpoint is not None
         assert checkpoint.rows_processed == 1000
@@ -103,12 +107,8 @@ class TestCheckpointManager:
         migration_id = manager.create_migration("test-schema")
 
         # Add checkpoints for multiple tables
-        manager.create_checkpoint(
-            migration_id, "CUSTOMERS", 5000, 10000, status="in_progress"
-        )
-        manager.create_checkpoint(
-            migration_id, "ORDERS", 2500, 5000, status="in_progress"
-        )
+        manager.create_checkpoint(migration_id, "CUSTOMERS", 5000, 10000, status="in_progress")
+        manager.create_checkpoint(migration_id, "ORDERS", 2500, 5000, status="in_progress")
 
         progress = manager.get_migration_progress(migration_id)
 
@@ -122,9 +122,9 @@ class TestCheckpointManager:
 
         manager.mark_migration_complete(migration_id)
 
-        migration = db.query(MigrationRecord).filter(
-            MigrationRecord.id == uuid.UUID(migration_id)
-        ).first()
+        migration = (
+            db.query(MigrationRecord).filter(MigrationRecord.id == uuid.UUID(migration_id)).first()
+        )
 
         assert migration.status == "completed"
         assert migration.completed_at is not None
@@ -162,9 +162,7 @@ class TestCheckpointManager:
         tables = ["CUSTOMERS", "ORDERS", "PRODUCTS"]
 
         for table in tables:
-            manager.create_checkpoint(
-                migration_id, table, 1000 * tables.index(table), 5000
-            )
+            manager.create_checkpoint(migration_id, table, 1000 * tables.index(table), 5000)
 
         progress = manager.get_migration_progress(migration_id)
 
@@ -181,9 +179,7 @@ class TestCheckpointResilience:
         migration_id = manager.create_migration("test-schema")
 
         # Save checkpoint
-        manager.create_checkpoint(
-            migration_id, "TABLE_A", 1000, 2000, status="in_progress"
-        )
+        manager.create_checkpoint(migration_id, "TABLE_A", 1000, 2000, status="in_progress")
 
         # Simulate error
         try:
@@ -202,15 +198,9 @@ class TestCheckpointResilience:
         migration_id = manager.create_migration("test-schema")
 
         # Create multiple checkpoints for same table
-        manager.create_checkpoint(
-            migration_id, "TABLE_A", 1000, 5000, status="in_progress"
-        )
-        manager.create_checkpoint(
-            migration_id, "TABLE_A", 2000, 5000, status="in_progress"
-        )
-        manager.create_checkpoint(
-            migration_id, "TABLE_A", 3000, 5000, status="in_progress"
-        )
+        manager.create_checkpoint(migration_id, "TABLE_A", 1000, 5000, status="in_progress")
+        manager.create_checkpoint(migration_id, "TABLE_A", 2000, 5000, status="in_progress")
+        manager.create_checkpoint(migration_id, "TABLE_A", 3000, 5000, status="in_progress")
 
         # Should get latest
         resume = manager.resume_from_checkpoint(migration_id, "TABLE_A")

@@ -1,4 +1,5 @@
 """Authentication endpoints: signup, login, logout, email verification, password reset."""
+
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -108,11 +109,11 @@ async def signup(request: SignupRequest, db: Session = Depends(get_db)):
         raise
     except Exception as e:
         import logging
+
         logger = logging.getLogger(__name__)
         logger.error(f"Signup error: {str(e)}", exc_info=True)
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Signup failed: {str(e)}"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Signup failed: {str(e)}"
         )
 
 

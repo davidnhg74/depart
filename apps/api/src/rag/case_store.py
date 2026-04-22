@@ -42,9 +42,9 @@ class ConversionCase:
     def pattern_signature(self) -> str:
         """Extract pattern signature for grouping similar conversions."""
         # Remove variable names and data types to find common pattern
-        lines = self.oracle_code.split('\n')
-        signature = ' '.join(
-            line.strip() for line in lines if line.strip() and not line.strip().startswith('--')
+        lines = self.oracle_code.split("\n")
+        signature = " ".join(
+            line.strip() for line in lines if line.strip() and not line.strip().startswith("--")
         )
         return signature[:200]  # First 200 chars as signature
 
@@ -131,9 +131,9 @@ class ConversionCaseStore:
         """
         from ..models import ConversionCaseRecord
 
-        case = self.db.query(ConversionCaseRecord).filter(
-            ConversionCaseRecord.id == case_id
-        ).first()
+        case = (
+            self.db.query(ConversionCaseRecord).filter(ConversionCaseRecord.id == case_id).first()
+        )
 
         if case:
             if success:
@@ -147,15 +147,17 @@ class ConversionCaseStore:
         """Get statistics on conversion patterns for a construct type."""
         from ..models import ConversionCaseRecord
 
-        cases = self.db.query(ConversionCaseRecord).filter(
-            ConversionCaseRecord.construct_type == construct_type
-        ).all()
+        cases = (
+            self.db.query(ConversionCaseRecord)
+            .filter(ConversionCaseRecord.construct_type == construct_type)
+            .all()
+        )
 
         if not cases:
             return {
-                'total_cases': 0,
-                'average_success_rate': 0.0,
-                'top_patterns': [],
+                "total_cases": 0,
+                "average_success_rate": 0.0,
+                "top_patterns": [],
             }
 
         success_rates = [
@@ -165,11 +167,11 @@ class ConversionCaseStore:
         ]
 
         return {
-            'total_cases': len(cases),
-            'average_success_rate': sum(success_rates) / len(success_rates)
-            if success_rates
-            else 0.0,
-            'top_patterns': sorted(
+            "total_cases": len(cases),
+            "average_success_rate": (
+                sum(success_rates) / len(success_rates) if success_rates else 0.0
+            ),
+            "top_patterns": sorted(
                 [(c.pattern_signature, c.success_rate) for c in cases],
                 key=lambda x: x[1],
                 reverse=True,

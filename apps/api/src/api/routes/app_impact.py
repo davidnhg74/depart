@@ -11,6 +11,7 @@ Response: 200 with EnrichedAppImpactReport (schema-typed below). On AI
 failures we still return the deterministic report; the response includes
 counts so the caller can see how many enrichments succeeded.
 """
+
 from __future__ import annotations
 
 import logging
@@ -72,7 +73,7 @@ class AppImpactResponse(BaseModel):
 # ─── Route ───────────────────────────────────────────────────────────────────
 
 
-MAX_ZIP_BYTES = 100 * 1024 * 1024       # 100 MB hard cap on either zip
+MAX_ZIP_BYTES = 100 * 1024 * 1024  # 100 MB hard cap on either zip
 
 
 @router.post("/app-impact", response_model=AppImpactResponse)
@@ -114,7 +115,9 @@ async def _unzip_to(upload: UploadFile, dest: Path) -> Path:
     if not data:
         raise HTTPException(400, f"{upload.filename or 'upload'} is empty")
     if len(data) > MAX_ZIP_BYTES:
-        raise HTTPException(413, f"{upload.filename} exceeds {MAX_ZIP_BYTES // (1024 * 1024)} MB cap")
+        raise HTTPException(
+            413, f"{upload.filename} exceeds {MAX_ZIP_BYTES // (1024 * 1024)} MB cap"
+        )
     tmp_zip = dest.parent / f"{dest.name}.zip"
     tmp_zip.write_bytes(data)
     try:
@@ -130,8 +133,7 @@ async def _unzip_to(upload: UploadFile, dest: Path) -> Path:
 def _parse_schema_dir(schema_dir: Path):
     """Concatenate every .sql file in the schema dir and parse as one Module."""
     sql_text = "\n\n".join(
-        p.read_text(encoding="utf-8", errors="replace")
-        for p in sorted(schema_dir.rglob("*.sql"))
+        p.read_text(encoding="utf-8", errors="replace") for p in sorted(schema_dir.rglob("*.sql"))
     )
     if not sql_text.strip():
         return None
@@ -190,10 +192,10 @@ def _serialize_enriched(enriched, schema_module) -> AppImpactResponse:
 
 def _max_risk_str(enriched_findings) -> str:
     from ...analyze.app_impact import RiskLevel, _rank
+
     if not enriched_findings:
         return RiskLevel.LOW.value
-    return max((ef.finding for ef in enriched_findings),
-               key=lambda f: _rank(f.risk)).risk.value
+    return max((ef.finding for ef in enriched_findings), key=lambda f: _rank(f.risk)).risk.value
 
 
 def _finding_dto(f) -> FindingDTO:

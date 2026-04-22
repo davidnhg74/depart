@@ -1,4 +1,5 @@
 """Tests for the source-code SQL fragment extractors."""
+
 import pytest
 
 from src.analyze.sql_extractor import (
@@ -13,33 +14,39 @@ from src.analyze.sql_extractor import (
 
 
 class TestSqlShape:
-    @pytest.mark.parametrize("text", [
-        "SELECT 1 FROM dual",
-        "  select * from t",
-        "INSERT INTO foo VALUES (1)",
-        "UPDATE x SET y = 1",
-        "DELETE FROM x",
-        "MERGE INTO t USING s",
-        "WITH cte AS (SELECT 1) SELECT * FROM cte",
-        "BEGIN dbms_output.put_line('x'); END;",
-        "DECLARE v NUMBER; BEGIN NULL; END;",
-        "CREATE TABLE foo (id NUMBER)",
-        "ALTER TABLE foo ADD COLUMN x NUMBER",
-        "DROP INDEX ix_foo",
-        "TRUNCATE TABLE staging",
-        "CALL my_proc(1, 2)",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "SELECT 1 FROM dual",
+            "  select * from t",
+            "INSERT INTO foo VALUES (1)",
+            "UPDATE x SET y = 1",
+            "DELETE FROM x",
+            "MERGE INTO t USING s",
+            "WITH cte AS (SELECT 1) SELECT * FROM cte",
+            "BEGIN dbms_output.put_line('x'); END;",
+            "DECLARE v NUMBER; BEGIN NULL; END;",
+            "CREATE TABLE foo (id NUMBER)",
+            "ALTER TABLE foo ADD COLUMN x NUMBER",
+            "DROP INDEX ix_foo",
+            "TRUNCATE TABLE staging",
+            "CALL my_proc(1, 2)",
+        ],
+    )
     def test_recognized(self, text):
         assert looks_like_sql(text)
 
-    @pytest.mark.parametrize("text", [
-        "Hello, world",
-        "selectric typewriter",      # starts with "select" but not as a word
-        "",
-        " ",
-        "SELE",                      # too short
-        "https://example.com/select/foo",
-    ])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Hello, world",
+            "selectric typewriter",  # starts with "select" but not as a word
+            "",
+            " ",
+            "SELE",  # too short
+            "https://example.com/select/foo",
+        ],
+    )
     def test_rejected(self, text):
         assert not looks_like_sql(text)
 
@@ -127,20 +134,25 @@ class TestPythonExtractor:
 
 
 class TestPickExtractor:
-    @pytest.mark.parametrize("path,lang", [
-        ("/x/y/A.java", "java"),
-        ("/x/y/repo.py", "python"),
-        ("/x/y/schema.sql", "sql"),
-        ("/x/y/Repo.cs", "csharp"),
-        ("/x/y/UserMapper.xml", "mybatis"),
-    ])
+    @pytest.mark.parametrize(
+        "path,lang",
+        [
+            ("/x/y/A.java", "java"),
+            ("/x/y/repo.py", "python"),
+            ("/x/y/schema.sql", "sql"),
+            ("/x/y/Repo.cs", "csharp"),
+            ("/x/y/UserMapper.xml", "mybatis"),
+        ],
+    )
     def test_recognized_extensions(self, path, lang):
         from pathlib import Path
+
         ex = pick_extractor(Path(path))
         assert ex is not None and ex.language == lang
 
     def test_unknown_extension(self):
         from pathlib import Path
+
         assert pick_extractor(Path("/x/y/notes.txt")) is None
 
 
@@ -150,16 +162,19 @@ class TestPickExtractor:
 class TestCsharpExtractor:
     def test_simple_string(self):
         from src.analyze.sql_extractor import CSHARP_EXTRACTOR
+
         assert CSHARP_EXTRACTOR.fn('var s = "SELECT 1 FROM dual";') == [(1, "SELECT 1 FROM dual")]
 
     def test_verbatim_multiline(self):
         from src.analyze.sql_extractor import CSHARP_EXTRACTOR
+
         src = 'var q = @"SELECT *\nFROM t\nWHERE x=1";'
         results = CSHARP_EXTRACTOR.fn(src)
         assert results and "SELECT *" in results[0][1] and "WHERE x=1" in results[0][1]
 
     def test_verbatim_doubled_quote_escape(self):
         from src.analyze.sql_extractor import CSHARP_EXTRACTOR
+
         # @"...""..." escapes a single double-quote.
         src = 'var s = @"it""s ok";'
         results = CSHARP_EXTRACTOR.fn(src)
@@ -167,6 +182,7 @@ class TestCsharpExtractor:
 
     def test_interpolated_string(self):
         from src.analyze.sql_extractor import CSHARP_EXTRACTOR
+
         src = 'var s = $"SELECT * FROM {tableName}";'
         results = CSHARP_EXTRACTOR.fn(src)
         # The interpolation expression is captured as literal characters; the
@@ -175,12 +191,14 @@ class TestCsharpExtractor:
 
     def test_line_comment_skipped(self):
         from src.analyze.sql_extractor import CSHARP_EXTRACTOR
+
         src = '// "fake string"\n"real";'
         results = CSHARP_EXTRACTOR.fn(src)
         assert results == [(2, "real")]
 
     def test_char_literal_skipped(self):
         from src.analyze.sql_extractor import CSHARP_EXTRACTOR
+
         src = "char c = 'A'; var s = \"S\";"
         results = CSHARP_EXTRACTOR.fn(src)
         assert results == [(1, "S")]
@@ -192,12 +210,13 @@ class TestCsharpExtractor:
 class TestMyBatisExtractor:
     def test_select_tag(self):
         from src.analyze.sql_extractor import MYBATIS_EXTRACTOR
+
         src = (
             '<mapper namespace="x">\n'
             '  <select id="findById" resultType="Emp">\n'
-            '    SELECT id, name FROM employees WHERE id = #{id}\n'
-            '  </select>\n'
-            '</mapper>\n'
+            "    SELECT id, name FROM employees WHERE id = #{id}\n"
+            "  </select>\n"
+            "</mapper>\n"
         )
         results = MYBATIS_EXTRACTOR.fn(src)
         assert len(results) == 1
@@ -207,14 +226,15 @@ class TestMyBatisExtractor:
 
     def test_multiple_statements(self):
         from src.analyze.sql_extractor import MYBATIS_EXTRACTOR
+
         src = (
-            '<mapper>\n'
+            "<mapper>\n"
             '  <select id="a">SELECT 1 FROM dual</select>\n'
             '  <update id="b">UPDATE t SET x=1</update>\n'
             '  <delete id="c">DELETE FROM t WHERE id=1</delete>\n'
             '  <insert id="d">INSERT INTO t VALUES (1)</insert>\n'
             '  <sql id="cols">id, name</sql>\n'
-            '</mapper>\n'
+            "</mapper>\n"
         )
         results = MYBATIS_EXTRACTOR.fn(src)
         assert len(results) == 5
@@ -226,11 +246,8 @@ class TestMyBatisExtractor:
 
     def test_cdata_stripped(self):
         from src.analyze.sql_extractor import MYBATIS_EXTRACTOR
-        src = (
-            '<select id="x">\n'
-            '  <![CDATA[ SELECT * FROM t WHERE x < 5 ]]>\n'
-            '</select>\n'
-        )
+
+        src = '<select id="x">\n' "  <![CDATA[ SELECT * FROM t WHERE x < 5 ]]>\n" "</select>\n"
         results = MYBATIS_EXTRACTOR.fn(src)
         assert results
         assert "x < 5" in results[0][1]
@@ -238,5 +255,6 @@ class TestMyBatisExtractor:
 
     def test_no_statements(self):
         from src.analyze.sql_extractor import MYBATIS_EXTRACTOR
-        results = MYBATIS_EXTRACTOR.fn("<mapper><resultMap id=\"m\"/></mapper>")
+
+        results = MYBATIS_EXTRACTOR.fn('<mapper><resultMap id="m"/></mapper>')
         assert results == []

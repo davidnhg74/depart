@@ -2,6 +2,7 @@
 
 Mocks the underlying AIClient via dependency injection — no LLM calls.
 """
+
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -37,7 +38,7 @@ def _ai_response_for(findings):
                 "code": f.code,
                 "explanation": f"AI says: rewrite this {f.code} occurrence.",
                 "before": f"-- before {f.code}",
-                "after":  f"-- after {f.code}",
+                "after": f"-- after {f.code}",
                 "caveats": [f"watch out for {f.code} edge case"],
             }
             for f in findings
@@ -70,18 +71,23 @@ class TestExplainerEnrichesFindings:
     def test_batches_split_correctly(self, analyzer, schema):
         report = analyzer.analyze_directory(FIXTURES / "java", languages=["java"])
         mock_client = MagicMock()
+
         # Each call sees only its own subset of findings; we satisfy whatever
         # we're handed.
         def side_effect(system, user):
             # Pull codes out of the user message line "code: APP.SQL.X"
-            codes = [line.split("code: ", 1)[1].strip()
-                     for line in user.splitlines() if line.startswith("- code:")]
+            codes = [
+                line.split("code: ", 1)[1].strip()
+                for line in user.splitlines()
+                if line.startswith("- code:")
+            ]
             return {
                 "findings": [
                     {"code": c, "explanation": "ok", "before": "b", "after": "a", "caveats": []}
                     for c in codes
                 ]
             }
+
         mock_client.complete_json.side_effect = side_effect
 
         explainer = AppImpactExplainer(client=mock_client, schema=schema, batch_size=2)
@@ -98,12 +104,21 @@ class TestExplainerEnrichesFindings:
         mock_client = MagicMock()
         # Track the sequence of codes the LLM is asked about.
         seen_codes = []
+
         def side_effect(system, user):
-            codes = [line.split("code: ", 1)[1].strip()
-                     for line in user.splitlines() if line.startswith("- code:")]
+            codes = [
+                line.split("code: ", 1)[1].strip()
+                for line in user.splitlines()
+                if line.startswith("- code:")
+            ]
             seen_codes.extend(codes)
-            return {"findings": [{"code": c, "explanation": "x", "before": "b",
-                                  "after": "a", "caveats": []} for c in codes]}
+            return {
+                "findings": [
+                    {"code": c, "explanation": "x", "before": "b", "after": "a", "caveats": []}
+                    for c in codes
+                ]
+            }
+
         mock_client.complete_json.side_effect = side_effect
 
         explainer = AppImpactExplainer(client=mock_client, schema=schema, batch_size=2)
@@ -112,6 +127,7 @@ class TestExplainerEnrichesFindings:
         # Risk-rank of CRITICAL > HIGH > MEDIUM > LOW. The first batch
         # (first two seen_codes) should both be CRITICAL.
         from src.analyze.app_impact import RiskLevel
+
         all_findings = [f for fi in report.files for f in fi.findings]
         by_code = {f.code: f.risk for f in all_findings}
         # Drop dup codes (one finding per code is fine for this assertion).
@@ -121,9 +137,9 @@ class TestExplainerEnrichesFindings:
                 first_two_uniq.append(c)
             if len(first_two_uniq) == 2:
                 break
-        assert all(by_code[c] == RiskLevel.CRITICAL for c in first_two_uniq), (
-            f"first batch was {first_two_uniq} with risks {[by_code[c] for c in first_two_uniq]}"
-        )
+        assert all(
+            by_code[c] == RiskLevel.CRITICAL for c in first_two_uniq
+        ), f"first batch was {first_two_uniq} with risks {[by_code[c] for c in first_two_uniq]}"
 
 
 class TestGracefulDegradation:
@@ -150,8 +166,15 @@ class TestGracefulDegradation:
         mock_client = MagicMock()
         # LLM returns explanations for unrelated codes — none of our findings match.
         mock_client.complete_json.return_value = {
-            "findings": [{"code": "APP.SQL.UNRELATED", "explanation": "x",
-                          "before": "", "after": "", "caveats": []}]
+            "findings": [
+                {
+                    "code": "APP.SQL.UNRELATED",
+                    "explanation": "x",
+                    "before": "",
+                    "after": "",
+                    "caveats": [],
+                }
+            ]
         }
         explainer = AppImpactExplainer(client=mock_client, schema=schema, batch_size=100)
         enriched = explainer.enrich(report)
@@ -159,7 +182,7 @@ class TestGracefulDegradation:
         all_enriched = [ef for fi in enriched.files for ef in fi.findings]
         assert all_enriched
         for ef in all_enriched:
-            assert ef.explanation == ""        # no AI content matched
+            assert ef.explanation == ""  # no AI content matched
 
 
 class TestSchemaSummary:
@@ -177,8 +200,16 @@ class TestSchemaSummary:
 class TestEnrichedFindingShape:
     def test_has_explanation_property(self):
         from src.analyze.app_impact import Finding, RiskLevel
-        f = Finding(code="X.Y", risk=RiskLevel.LOW, message="m",
-                    suggestion="s", file="f", line=1, snippet="x")
+
+        f = Finding(
+            code="X.Y",
+            risk=RiskLevel.LOW,
+            message="m",
+            suggestion="s",
+            file="f",
+            line=1,
+            snippet="x",
+        )
         ef_with = EnrichedFinding(finding=f, explanation="hi", before="", after="")
         ef_without = EnrichedFinding(finding=f, explanation="", before="", after="")
         assert ef_with.has_explanation

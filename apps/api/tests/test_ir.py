@@ -4,6 +4,7 @@ The IR types are the most important interface in the codebase — every
 source dialect, target dialect, and AI service depends on them. Lock down
 behavior here so accidental refactors get caught.
 """
+
 import pytest
 
 from src.core.diagnostics.diagnostic import Diagnostic, Severity, Span
@@ -30,14 +31,13 @@ class TestSpan:
     def test_span_is_frozen(self):
         s = Span(file=None, start_line=1, start_col=1, end_line=1, end_col=2)
         with pytest.raises(Exception):
-            s.start_line = 99   # type: ignore[misc]
+            s.start_line = 99  # type: ignore[misc]
 
 
 class TestDiagnostic:
     def test_dotted_code_required(self):
         with pytest.raises(ValueError):
-            Diagnostic(code="undotted", severity=Severity.INFO,
-                       message="m", span=Span.unknown())
+            Diagnostic(code="undotted", severity=Severity.INFO, message="m", span=Span.unknown())
 
     def test_severity_enum_values(self):
         # Lock the enum values; the runbook generator emits these as JSON.

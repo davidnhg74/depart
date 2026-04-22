@@ -14,5 +14,6 @@ Layout:
     corpus/<id>/    — per-prompt fixtures (cases.jsonl)
     cli.py          — `python -m src.ai.eval <prompt_id>`
 """
+
 from .types import EvalCase, EvalResult, EvalSuite, RuleResult, ScoreRule  # noqa: F401
 from .runner import EvalRunner, load_suite  # noqa: F401

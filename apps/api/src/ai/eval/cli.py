@@ -9,6 +9,7 @@
 Real runs require ANTHROPIC_API_KEY. Output is plain text via
 runner.format_report(); exit code is 0 on full pass, 1 on any failure.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -43,6 +44,7 @@ def _build_invoker(prompt_id: str):
     if prompt_id == "app_impact":
         from ..client import AIClient
         from ..prompts.app_impact import SYSTEM_PROMPT, VERSION, render_user_message
+
         client = AIClient.fast(feature="eval.app_impact")
 
         def invoke(inputs: Dict) -> str:
@@ -58,15 +60,23 @@ def _build_invoker(prompt_id: str):
         from types import SimpleNamespace
         from ..client import AIClient
         from ..prompts.runbook import SYSTEM_PROMPT, VERSION, render_user_message
+
         client = AIClient.smart(feature="eval.runbook")
 
         def invoke(inputs: Dict) -> str:
-            ctx = SimpleNamespace(**{
-                k: inputs.get(k) for k in (
-                    "project_name", "customer", "source_version", "target_version",
-                    "cutover_window", "rate_per_day",
-                )
-            })
+            ctx = SimpleNamespace(
+                **{
+                    k: inputs.get(k)
+                    for k in (
+                        "project_name",
+                        "customer",
+                        "source_version",
+                        "target_version",
+                        "cutover_window",
+                        "rate_per_day",
+                    )
+                }
+            )
             cx = SimpleNamespace(**inputs["complexity"]) if inputs.get("complexity") else None
             ai = SimpleNamespace(**inputs["app_impact"]) if inputs.get("app_impact") else None
             user = render_user_message(ctx=ctx, complexity=cx, app_impact=ai)

@@ -83,9 +83,7 @@ class SimilaritySearchEngine:
             similarity = self.cosine_similarity(query_embedding, conversion_embedding)
 
             # Combine baseline confidence with similarity
-            final_score = (
-                baseline_score * (1 - similarity_weight) + similarity * similarity_weight
-            )
+            final_score = baseline_score * (1 - similarity_weight) + similarity * similarity_weight
 
             ranked.append((case_id, final_score))
 

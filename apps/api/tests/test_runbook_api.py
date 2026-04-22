@@ -1,4 +1,5 @@
 """Tests for /api/v3/projects/runbook."""
+
 import io
 import zipfile
 from pathlib import Path
@@ -21,6 +22,7 @@ FIXTURES = Path(__file__).parent / "fixtures" / "app_impact"
 @pytest.fixture
 def client():
     from src.api.routes.runbook import router
+
     app = FastAPI()
     app.include_router(router)
     return TestClient(app)
@@ -141,10 +143,10 @@ class TestExplainPath:
         # AI-tagged sections.
         src_text = (FIXTURES / "schema" / "schema.sql").read_text()
         cx = analyze_complexity(src_text)
-        ctx = RunbookContext(project_name="X", customer="Y",
-                             complexity=cx, app_impact=None)
-        rb = assemble(ctx, executive_summary="AI EXEC.",
-                      risk_narrative="AI RISK.", prompt_version="v-test")
+        ctx = RunbookContext(project_name="X", customer="Y", complexity=cx, app_impact=None)
+        rb = assemble(
+            ctx, executive_summary="AI EXEC.", risk_narrative="AI RISK.", prompt_version="v-test"
+        )
         MockGen.return_value.generate.return_value = rb
         # The app-impact explainer is invoked on the (real) deterministic
         # report; just return whatever the analyzer found, untouched.
@@ -157,8 +159,10 @@ class TestExplainPath:
                 "source_zip": ("c.zip", _zip_dir(FIXTURES / "java"), "application/zip"),
             },
             data={
-                "project_name": "X", "customer": "Y",
-                "explain": "true", "format": "json",
+                "project_name": "X",
+                "customer": "Y",
+                "explain": "true",
+                "format": "json",
             },
         )
         assert resp.status_code == 200, resp.text
@@ -178,8 +182,10 @@ class TestExplainPath:
                 "schema_zip": ("s.zip", _zip_dir(FIXTURES / "schema"), "application/zip"),
             },
             data={
-                "project_name": "X", "customer": "Y",
-                "explain": "true", "format": "json",
+                "project_name": "X",
+                "customer": "Y",
+                "explain": "true",
+                "format": "json",
             },
         )
         assert resp.status_code == 200
@@ -212,6 +218,7 @@ class TestErrors:
         # Zip contains a .txt file but no .sql files — must 400.
         import io
         import zipfile
+
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w") as zf:
             zf.writestr("readme.txt", "no sql here")

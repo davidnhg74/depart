@@ -62,6 +62,7 @@ CREATE TABLE employees (
 # StaticDDLExtractor Tests
 # ============================================================================
 
+
 class TestStaticDDLExtractor:
     """Test DDL parsing and type extraction."""
 
@@ -170,6 +171,7 @@ class TestStaticDDLExtractor:
 # SemanticAnalyzer Tests
 # ============================================================================
 
+
 class TestSemanticAnalyzer:
     """Test semantic analysis logic."""
 
@@ -196,9 +198,9 @@ class TestSemanticAnalyzer:
                 "oracle_type": "NUMBER(12,2)",
                 "pg_type": "NUMERIC(10,2)",
                 "description": "Precision reduced from 12 to 10 digits. "
-                               "Values > 99,999.99 will be truncated or raise exceptions.",
+                "Values > 99,999.99 will be truncated or raise exceptions.",
                 "recommendation": "Use NUMERIC(12,2) in PostgreSQL schema "
-                                 "to match Oracle precision.",
+                "to match Oracle precision.",
             }
         ]
 
@@ -223,7 +225,7 @@ class TestSemanticAnalyzer:
                 "oracle_type": "DATE",
                 "pg_type": "DATE",
                 "description": "Oracle DATE stores time (HH:MI:SS); "
-                               "PostgreSQL DATE does not. Time component is lost.",
+                "PostgreSQL DATE does not. Time component is lost.",
                 "recommendation": "Use TIMESTAMP in PostgreSQL if time precision is needed.",
             }
         ]
@@ -349,6 +351,7 @@ class TestSemanticAnalyzer:
 # ============================================================================
 # Integration Tests (marked to skip if no LLM configured)
 # ============================================================================
+
 
 @pytest.mark.integration
 class TestSemanticAnalyzerIntegration:

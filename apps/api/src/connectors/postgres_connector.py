@@ -128,13 +128,19 @@ class PostgresConnector:
         """Get list of all tables in current schema."""
         try:
             session = self.get_session()
-            tables = session.execute(
-                text("""
+            tables = (
+                session.execute(
+                    text(
+                        """
                     SELECT tablename FROM pg_tables
                     WHERE schemaname = 'public'
                     ORDER BY tablename
-                """)
-            ).scalars().all()
+                """
+                    )
+                )
+                .scalars()
+                .all()
+            )
             session.close()
             return tables
         except Exception as e:
@@ -145,9 +151,7 @@ class PostgresConnector:
         """Get row count for a table."""
         try:
             session = self.get_session()
-            count = session.execute(
-                text(f"SELECT COUNT(*) FROM {table_name}")
-            ).scalar()
+            count = session.execute(text(f"SELECT COUNT(*) FROM {table_name}")).scalar()
             session.close()
             return count or 0
         except Exception as e:
@@ -189,12 +193,14 @@ class PostgresConnector:
 
             # Create test table
             session.execute(
-                text(f"""
+                text(
+                    f"""
                     CREATE TABLE {table_name} (
                         id INTEGER PRIMARY KEY,
                         test_col VARCHAR(100)
                     )
-                """)
+                """
+                )
             )
 
             # Drop test table
@@ -219,18 +225,18 @@ class PostgresConnector:
 
             # Create table
             session.execute(
-                text(f"""
+                text(
+                    f"""
                     CREATE TABLE {table_name} (
                         id INTEGER PRIMARY KEY,
                         test_col VARCHAR(100)
                     )
-                """)
+                """
+                )
             )
 
             # Insert row
-            session.execute(
-                text(f"INSERT INTO {table_name} VALUES (1, 'test')")
-            )
+            session.execute(text(f"INSERT INTO {table_name} VALUES (1, 'test')"))
 
             # Drop table
             session.execute(text(f"DROP TABLE {table_name}"))

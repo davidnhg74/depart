@@ -32,8 +32,8 @@ def simple_sql_zip():
 
     # Create zip in memory
     zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, 'w') as zf:
-        zf.writestr('schema.sql', sql_content)
+    with zipfile.ZipFile(zip_buffer, "w") as zf:
+        zf.writestr("schema.sql", sql_content)
     zip_buffer.seek(0)
     return zip_buffer
 
@@ -68,8 +68,8 @@ def complex_sql_zip():
     """
 
     zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, 'w') as zf:
-        zf.writestr('complex.sql', sql_content)
+    with zipfile.ZipFile(zip_buffer, "w") as zf:
+        zf.writestr("complex.sql", sql_content)
     zip_buffer.seek(0)
     return zip_buffer
 
@@ -81,11 +81,8 @@ class TestPhase1API:
         """Test analyzing simple SQL."""
         response = client.post(
             "/api/v1/analyze",
-            data={
-                "email": "test@example.com",
-                "rate_per_day": "1000"
-            },
-            files={"file": ("test.zip", simple_sql_zip, "application/zip")}
+            data={"email": "test@example.com", "rate_per_day": "1000"},
+            files={"file": ("test.zip", simple_sql_zip, "application/zip")},
         )
 
         assert response.status_code == 200
@@ -110,11 +107,8 @@ class TestPhase1API:
         """Test analyzing complex SQL with Tier B/C constructs."""
         response = client.post(
             "/api/v1/analyze",
-            data={
-                "email": "dba@company.com",
-                "rate_per_day": "1500"
-            },
-            files={"file": ("complex.zip", complex_sql_zip, "application/zip")}
+            data={"email": "dba@company.com", "rate_per_day": "1500"},
+            files={"file": ("complex.zip", complex_sql_zip, "application/zip")},
         )
 
         assert response.status_code == 200
@@ -131,7 +125,7 @@ class TestPhase1API:
         response = client.post(
             "/api/v1/analyze",
             data={"rate_per_day": "1000"},
-            files={"file": ("test.zip", simple_sql_zip, "application/zip")}
+            files={"file": ("test.zip", simple_sql_zip, "application/zip")},
         )
 
         assert response.status_code == 422  # Unprocessable entity
@@ -140,11 +134,8 @@ class TestPhase1API:
         """Test custom rate per day calculation."""
         response = client.post(
             "/api/v1/analyze",
-            data={
-                "email": "test@example.com",
-                "rate_per_day": "2000"
-            },
-            files={"file": ("test.zip", simple_sql_zip, "application/zip")}
+            data={"email": "test@example.com", "rate_per_day": "2000"},
+            files={"file": ("test.zip", simple_sql_zip, "application/zip")},
         )
 
         assert response.status_code == 200

@@ -1,4 +1,5 @@
 """Email service using Resend."""
+
 import logging
 from ..config import settings
 
@@ -7,6 +8,7 @@ logger = logging.getLogger(__name__)
 # Try to import resend, but make it optional
 try:
     import resend
+
     resend.api_key = settings.resend_api_key
     RESEND_AVAILABLE = bool(settings.resend_api_key)
 except ImportError:

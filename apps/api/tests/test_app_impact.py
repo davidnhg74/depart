@@ -1,5 +1,6 @@
 """Tests for the app-impact analyzer — classifier rules + end-to-end run
 against the Java/Python/SQL fixtures under tests/fixtures/app_impact/."""
+
 from pathlib import Path
 
 import pytest
@@ -34,6 +35,7 @@ class TestClassifierRules:
 
     def _findings(self, analyzer, sql: str) -> list:
         from src.analyze.sql_extractor import SqlFragment
+
         frag = SqlFragment(sql=sql, file="<inline>", line=1)
         return analyzer._classify_fragment("<inline>", frag)
 
@@ -59,12 +61,18 @@ class TestClassifierRules:
         assert nvl and nvl[0].risk == RiskLevel.MEDIUM
 
     def test_connect_by_high(self, analyzer):
-        fs = self._findings(analyzer, "SELECT 1 FROM employees START WITH manager_id IS NULL CONNECT BY PRIOR id = manager_id")
+        fs = self._findings(
+            analyzer,
+            "SELECT 1 FROM employees START WITH manager_id IS NULL CONNECT BY PRIOR id = manager_id",
+        )
         cb = [f for f in fs if f.code == "APP.SQL.CONNECT_BY"]
         assert cb and cb[0].risk == RiskLevel.HIGH
 
     def test_merge_high(self, analyzer):
-        fs = self._findings(analyzer, "MERGE INTO employees t USING staging s ON (t.id = s.id) WHEN MATCHED THEN UPDATE SET t.name = s.name")
+        fs = self._findings(
+            analyzer,
+            "MERGE INTO employees t USING staging s ON (t.id = s.id) WHEN MATCHED THEN UPDATE SET t.name = s.name",
+        )
         m = [f for f in fs if f.code == "APP.SQL.MERGE"]
         assert m and m[0].risk == RiskLevel.HIGH
 
@@ -85,8 +93,7 @@ class TestClassifierRules:
 
     def test_outer_join_plus_critical(self, analyzer):
         fs = self._findings(
-            analyzer,
-            "SELECT o.id, c.name FROM orders o, customers c WHERE o.customer_id = c.id(+)"
+            analyzer, "SELECT o.id, c.name FROM orders o, customers c WHERE o.customer_id = c.id(+)"
         )
         oj = [f for f in fs if f.code == f"APP.SQL.{ConstructTag.OUTER_JOIN_PLUS.value}"]
         assert oj and oj[0].risk == RiskLevel.CRITICAL
@@ -109,9 +116,11 @@ class TestClassifierRules:
 class TestSuggestions:
     def test_each_finding_has_a_suggestion(self, analyzer):
         from src.analyze.sql_extractor import SqlFragment
+
         frag = SqlFragment(
             sql="UPDATE employees SET updated_at = SYSDATE WHERE ROWNUM <= 10",
-            file="<inline>", line=1,
+            file="<inline>",
+            line=1,
         )
         for f in analyzer._classify_fragment("<inline>", frag):
             assert f.suggestion and len(f.suggestion) > 10, f
@@ -162,6 +171,7 @@ class TestEndToEnd:
         # Files are ordered by max risk descending.
         for i in range(len(top) - 1):
             from src.analyze.app_impact import _rank
+
             assert _rank(top[i].max_risk) >= _rank(top[i + 1].max_risk)
 
     def test_unknown_extension_skipped(self, analyzer, tmp_path):

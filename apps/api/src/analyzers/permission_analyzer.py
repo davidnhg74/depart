@@ -15,9 +15,10 @@ logger = logging.getLogger(__name__)
 @dataclass
 class PrivilegeMapping:
     """Mapping of a single Oracle privilege to PostgreSQL equivalent."""
+
     oracle_privilege: str
     pg_equivalent: Optional[str]
-    risk_level: int              # 1-10
+    risk_level: int  # 1-10
     recommendation: str
     grant_sql: Optional[str] = None
 
@@ -25,15 +26,17 @@ class PrivilegeMapping:
 @dataclass
 class UnmappablePrivilege:
     """Oracle privilege that doesn't map to PostgreSQL."""
+
     oracle_privilege: str
     reason: str
     workaround: str
-    risk_level: int              # 1-10
+    risk_level: int  # 1-10
 
 
 @dataclass
 class OraclePrivileges:
     """Raw Oracle privilege data from data dictionary."""
+
     system_privs: List[Dict[str, Any]] = field(default_factory=list)
     object_privs: List[Dict[str, Any]] = field(default_factory=list)
     role_grants: List[Dict[str, Any]] = field(default_factory=list)
@@ -44,10 +47,11 @@ class OraclePrivileges:
 @dataclass
 class PermissionAnalysisResult:
     """Complete permission analysis result."""
+
     mappings: List[PrivilegeMapping]
     unmappable: List[UnmappablePrivilege]
     grant_sql: List[str]
-    overall_risk: str           # LOW, MEDIUM, HIGH, CRITICAL
+    overall_risk: str  # LOW, MEDIUM, HIGH, CRITICAL
     analyzed_at: str
 
 
@@ -118,7 +122,9 @@ class OraclePrivilegeExtractor:
 
             except Exception as dba_error:
                 # Fallback to current-user privileges (non-DBA)
-                logger.warning(f"DBA path failed ({dba_error}), falling back to current-user privileges")
+                logger.warning(
+                    f"DBA path failed ({dba_error}), falling back to current-user privileges"
+                )
 
                 # Session privileges (what current user has)
                 session_privs_sql = """
@@ -127,7 +133,9 @@ class OraclePrivilegeExtractor:
                 """
                 try:
                     rows = session.execute(text(session_privs_sql)).mappings().all()
-                    result.system_privs = [{"privilege": r["privilege"], "grantee": "CURRENT_USER"} for r in rows]
+                    result.system_privs = [
+                        {"privilege": r["privilege"], "grantee": "CURRENT_USER"} for r in rows
+                    ]
                     logger.info(f"Extracted {len(result.system_privs)} session privileges")
                 except Exception as e:
                     logger.warning(f"Could not extract session privileges: {e}")
@@ -192,22 +200,26 @@ class PermissionMapper:
             # Parse Claude response into dataclasses
             mappings = []
             for m in claude_result.get("mappings", []):
-                mappings.append(PrivilegeMapping(
-                    oracle_privilege=m["oracle_privilege"],
-                    pg_equivalent=m.get("pg_equivalent"),
-                    risk_level=m.get("risk_level", 5),
-                    recommendation=m.get("recommendation", ""),
-                    grant_sql=m.get("grant_sql"),
-                ))
+                mappings.append(
+                    PrivilegeMapping(
+                        oracle_privilege=m["oracle_privilege"],
+                        pg_equivalent=m.get("pg_equivalent"),
+                        risk_level=m.get("risk_level", 5),
+                        recommendation=m.get("recommendation", ""),
+                        grant_sql=m.get("grant_sql"),
+                    )
+                )
 
             unmappable = []
             for u in claude_result.get("unmappable", []):
-                unmappable.append(UnmappablePrivilege(
-                    oracle_privilege=u["oracle_privilege"],
-                    reason=u.get("reason", ""),
-                    workaround=u.get("workaround", ""),
-                    risk_level=u.get("risk_level", 5),
-                ))
+                unmappable.append(
+                    UnmappablePrivilege(
+                        oracle_privilege=u["oracle_privilege"],
+                        reason=u.get("reason", ""),
+                        workaround=u.get("workaround", ""),
+                        risk_level=u.get("risk_level", 5),
+                    )
+                )
 
             # Compile GRANT SQL
             grant_sql = [m.grant_sql for m in mappings if m.grant_sql]

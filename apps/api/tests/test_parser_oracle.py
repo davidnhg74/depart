@@ -68,14 +68,16 @@ class TestObjectDetection:
         assert idxs and idxs[0].unique is True
 
     def test_create_trigger(self):
-        m = parse("""
+        m = parse(
+            """
         CREATE OR REPLACE TRIGGER emp_audit
         BEFORE INSERT ON employees
         FOR EACH ROW
         BEGIN
             :NEW.created_at := SYSDATE;
         END;
-        """)
+        """
+        )
         assert ObjectKind.TRIGGER in _kinds(m)
 
     def test_create_procedure(self):
@@ -83,16 +85,19 @@ class TestObjectDetection:
         assert ObjectKind.PROCEDURE in _kinds(m)
 
     def test_create_function(self):
-        m = parse("""
+        m = parse(
+            """
         CREATE OR REPLACE FUNCTION add_one(p IN NUMBER) RETURN NUMBER AS
         BEGIN
             RETURN p + 1;
         END;
-        """)
+        """
+        )
         assert ObjectKind.FUNCTION in _kinds(m)
 
     def test_create_package_and_body(self):
-        m = parse("""
+        m = parse(
+            """
         CREATE OR REPLACE PACKAGE my_pkg AS
             PROCEDURE p;
             FUNCTION f RETURN NUMBER;
@@ -102,7 +107,8 @@ class TestObjectDetection:
             PROCEDURE p IS BEGIN NULL; END;
             FUNCTION f RETURN NUMBER IS BEGIN RETURN 1; END;
         END my_pkg;
-        """)
+        """
+        )
         kinds = _kinds(m)
         assert ObjectKind.PACKAGE in kinds
         assert ObjectKind.PACKAGE_BODY in kinds
@@ -113,7 +119,8 @@ class TestObjectDetection:
 
 class TestConstructTagging:
     def test_connect_by(self):
-        m = parse("""
+        m = parse(
+            """
         CREATE OR REPLACE PROCEDURE org_chart AS
         BEGIN
             FOR r IN (
@@ -122,84 +129,99 @@ class TestConstructTagging:
                 CONNECT BY PRIOR employee_id = manager_id
             ) LOOP NULL; END LOOP;
         END;
-        """)
+        """
+        )
         assert ConstructTag.CONNECT_BY in _construct_tags(m)
 
     def test_merge(self):
-        m = parse("""
+        m = parse(
+            """
         CREATE OR REPLACE PROCEDURE upsert AS
         BEGIN
             MERGE INTO target t USING source s ON (t.id = s.id)
             WHEN MATCHED THEN UPDATE SET t.x = s.x
             WHEN NOT MATCHED THEN INSERT (id, x) VALUES (s.id, s.x);
         END;
-        """)
+        """
+        )
         assert ConstructTag.MERGE in _construct_tags(m)
 
     def test_autonomous_transaction(self):
-        m = parse("""
+        m = parse(
+            """
         CREATE OR REPLACE PROCEDURE audit_log(msg VARCHAR2) AS
             PRAGMA AUTONOMOUS_TRANSACTION;
         BEGIN
             INSERT INTO audit (msg) VALUES (msg);
             COMMIT;
         END;
-        """)
+        """
+        )
         assert ConstructTag.AUTONOMOUS_TXN in _construct_tags(m)
 
     def test_execute_immediate(self):
-        m = parse("""
+        m = parse(
+            """
         CREATE OR REPLACE PROCEDURE dyn AS
         BEGIN
             EXECUTE IMMEDIATE 'TRUNCATE TABLE staging';
         END;
-        """)
+        """
+        )
         assert ConstructTag.EXECUTE_IMMEDIATE in _construct_tags(m)
 
     def test_bulk_collect(self):
-        m = parse("""
+        m = parse(
+            """
         CREATE OR REPLACE PROCEDURE bulk_load AS
             TYPE t_arr IS TABLE OF employees%ROWTYPE;
             v_emps t_arr;
         BEGIN
             SELECT * BULK COLLECT INTO v_emps FROM employees;
         END;
-        """)
+        """
+        )
         # BULK COLLECT and %ROWTYPE both expected.
         tags = _construct_tags(m)
         assert ConstructTag.BULK_COLLECT in tags
         assert ConstructTag.PERCENT_TYPE in tags
 
     def test_dbms_packages(self):
-        m = parse("""
+        m = parse(
+            """
         CREATE OR REPLACE PROCEDURE notify AS
         BEGIN
             DBMS_OUTPUT.PUT_LINE('hello');
             DBMS_SCHEDULER.CREATE_JOB(job_name => 'x');
         END;
-        """)
+        """
+        )
         tags = _construct_tags(m)
         assert ConstructTag.DBMS_OUTPUT in tags
         assert ConstructTag.DBMS_SCHEDULER in tags
 
     def test_database_link(self):
-        m = parse("""
+        m = parse(
+            """
         CREATE OR REPLACE PROCEDURE pull AS
         BEGIN
             INSERT INTO local_t SELECT * FROM remote_t@prod_link;
         END;
-        """)
+        """
+        )
         assert ConstructTag.DBLINK in _construct_tags(m)
 
     def test_percent_type_and_rowtype(self):
-        m = parse("""
+        m = parse(
+            """
         CREATE OR REPLACE PROCEDURE tdemo AS
             v_id  employees.id%TYPE;
             v_row employees%ROWTYPE;
         BEGIN
             NULL;
         END;
-        """)
+        """
+        )
         assert ConstructTag.PERCENT_TYPE in _construct_tags(m)
 
 
@@ -210,32 +232,37 @@ class TestFalsePositiveGuards:
     """The regex parser scored these. The new parser must not."""
 
     def test_keyword_in_string_literal(self):
-        m = parse("""
+        m = parse(
+            """
         CREATE OR REPLACE PROCEDURE p AS
         BEGIN
             INSERT INTO log (msg) VALUES ('CONNECT BY example')
             ; INSERT INTO log (msg) VALUES ('MERGE INTO not really');
         END;
-        """)
+        """
+        )
         tags = _construct_tags(m)
         assert ConstructTag.CONNECT_BY not in tags
         assert ConstructTag.MERGE not in tags
 
     def test_keyword_in_line_comment(self):
-        m = parse("""
+        m = parse(
+            """
         CREATE OR REPLACE PROCEDURE p AS
         BEGIN
             -- MERGE INTO target t USING ...
             -- CONNECT BY PRIOR ...
             NULL;
         END;
-        """)
+        """
+        )
         tags = _construct_tags(m)
         assert ConstructTag.MERGE not in tags
         assert ConstructTag.CONNECT_BY not in tags
 
     def test_keyword_in_block_comment(self):
-        m = parse("""
+        m = parse(
+            """
         CREATE OR REPLACE PROCEDURE p AS
         BEGIN
             /*
@@ -244,7 +271,8 @@ class TestFalsePositiveGuards:
              */
             NULL;
         END;
-        """)
+        """
+        )
         assert ConstructTag.MERGE not in _construct_tags(m)
 
 
@@ -253,11 +281,13 @@ class TestFalsePositiveGuards:
 
 class TestMultiObject:
     def test_two_tables_and_a_view(self):
-        m = parse("""
+        m = parse(
+            """
         CREATE TABLE a (id NUMBER);
         CREATE TABLE b (id NUMBER);
         CREATE OR REPLACE VIEW v AS SELECT * FROM a;
-        """)
+        """
+        )
         kinds = _kinds(m)
         assert kinds.count(ObjectKind.TABLE) == 2
         assert kinds.count(ObjectKind.VIEW) == 1
@@ -282,12 +312,7 @@ class TestSpans:
         assert obj.span.start_col == 1
 
     def test_object_span_records_multiline_extent(self):
-        src = (
-            "CREATE OR REPLACE PROCEDURE p AS\n"
-            "BEGIN\n"
-            "    NULL;\n"
-            "END;\n"
-        )
+        src = "CREATE OR REPLACE PROCEDURE p AS\n" "BEGIN\n" "    NULL;\n" "END;\n"
         m = parse(src)
         obj = next(o for o in m.objects if isinstance(o, Subprogram))
         assert obj.span.start_line == 1

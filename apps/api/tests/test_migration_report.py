@@ -1,6 +1,7 @@
 """
 Tests for migration progress reporting.
 """
+
 from src.models import MigrationReport
 
 
@@ -17,7 +18,7 @@ class TestMigrationReport:
             conversion_percentage=70.0,
             risk_breakdown={"high": 1, "medium": 2, "low": 7},
             blockers=[],
-            generated_at="2026-04-21T12:00:00Z"
+            generated_at="2026-04-21T12:00:00Z",
         )
 
         assert report.migration_id == "123e4567-e89b-12d3-a456-426614174000"
@@ -38,7 +39,7 @@ class TestMigrationReport:
             conversion_percentage=0.0,
             risk_breakdown={},
             blockers=[],
-            generated_at="2026-04-21T12:00:00Z"
+            generated_at="2026-04-21T12:00:00Z",
         )
 
         assert report.conversion_percentage == 0.0
@@ -53,7 +54,7 @@ class TestMigrationReport:
             conversion_percentage=100.0,
             risk_breakdown={"high": 0, "medium": 0, "low": 10},
             blockers=[],
-            generated_at="2026-04-21T12:00:00Z"
+            generated_at="2026-04-21T12:00:00Z",
         )
 
         assert report.conversion_percentage == 100.0
@@ -62,7 +63,7 @@ class TestMigrationReport:
         """Test MigrationReport with blockers."""
         blockers = [
             {"name": "calculate_bonus", "reason": "Uses DBMS_SCHEDULER"},
-            {"name": "process_audit", "reason": "Uses PRAGMA AUTONOMOUS_TRANSACTION"}
+            {"name": "process_audit", "reason": "Uses PRAGMA AUTONOMOUS_TRANSACTION"},
         ]
         report = MigrationReport(
             migration_id="test-id",
@@ -72,7 +73,7 @@ class TestMigrationReport:
             conversion_percentage=60.0,
             risk_breakdown={"high": 2, "medium": 0, "low": 3},
             blockers=blockers,
-            generated_at="2026-04-21T12:00:00Z"
+            generated_at="2026-04-21T12:00:00Z",
         )
 
         assert len(report.blockers) == 2

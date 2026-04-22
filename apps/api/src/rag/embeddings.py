@@ -12,7 +12,7 @@ class EmbeddingGenerator:
 
     def __init__(self):
         # Use code-aware model that understands programming constructs
-        self.model = SentenceTransformer('all-MiniLM-L6-v2')
+        self.model = SentenceTransformer("all-MiniLM-L6-v2")
 
     def generate(self, code: str) -> List[float]:
         """
@@ -44,8 +44,8 @@ class EmbeddingGenerator:
     def _normalize_code(code: str) -> str:
         """Normalize code for embedding."""
         # Remove extra whitespace but preserve structure
-        lines = [line.strip() for line in code.split('\n') if line.strip()]
-        normalized = ' '.join(lines)
+        lines = [line.strip() for line in code.split("\n") if line.strip()]
+        normalized = " ".join(lines)
 
         # Truncate to first 1000 chars to avoid huge embeddings
         return normalized[:1000]
