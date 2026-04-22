@@ -65,6 +65,11 @@ jobs:
       - name: Generate ANTLR parser
         working-directory: apps/api
         run: python3 scripts/generate_grammar.py
+      - name: Verify ANTLR path activated
+        working-directory: apps/api
+        run: |
+          python3 -c "from src.source.oracle import _visitor; \
+            assert _visitor.is_available(), 'ANTLR _generated/ not importable after make grammar'"
       - name: Bootstrap extensions
         run: |
           PGPASSWORD=depart_secure_password psql -h localhost -U depart_user -d depart \
@@ -75,6 +80,13 @@ jobs:
       - name: Test
         working-directory: apps/api
         run: pytest tests/ -v --cov=src --cov-report=xml
+      - name: Eval harness smoke (dry-run, no LLM)
+        working-directory: apps/api
+        # Exit-code 1 expected (mock returns "{}" so all rules fail); we
+        # only care that the harness wires up + parses the corpus.
+        run: |
+          python3 -m src.ai.eval app_impact --dry || true
+          python3 -m src.ai.eval runbook --dry || true
       - name: Upload coverage
         if: always()
         uses: actions/upload-artifact@v4
