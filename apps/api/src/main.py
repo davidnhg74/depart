@@ -21,6 +21,7 @@ from .converters.oracle_functions import OracleFunctionConverter
 from .rag import ConversionCaseStore, EmbeddingGenerator
 from .migrations import setup_rag_tables
 from .migration import DataMigrator, CheckpointManager
+from .migration.tasks import get_migration_manager
 
 app = FastAPI(title="Depart API", version="0.2.0")
 
@@ -481,8 +482,18 @@ async def start_migration(request: MigrationPlanRequest, db: Session = Depends(g
         db.add(migration)
         db.commit()
 
-        # TODO: Spawn background task to run migration
-        # For MVP: return migration_id for polling
+        # Create and start background task
+        manager = get_migration_manager()
+        task = manager.create_task(
+            migration_id=migration_id,
+            oracle_connection_string=request.oracle_connection_string,
+            postgres_connection_string=request.postgres_connection_string,
+            tables=request.tables,
+            num_workers=request.num_workers,
+            chunk_size=request.chunk_size,
+        )
+
+        task.start()
 
         return {
             "migration_id": migration_id,
