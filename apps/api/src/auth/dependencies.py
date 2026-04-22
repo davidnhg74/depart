@@ -8,6 +8,7 @@ from ..models import User
 from .jwt import decode_token, verify_token_type
 
 security = HTTPBearer()
+security_optional = HTTPBearer(auto_error=False)
 
 
 async def get_current_user(
@@ -59,7 +60,7 @@ async def get_current_user(
 
 async def get_optional_user(
     db: Session = Depends(get_db),
-    credentials = Depends(security)
+    credentials = Depends(security_optional)
 ) -> Optional[User]:
     """Get the current user if authenticated, otherwise return None."""
     if not credentials:
