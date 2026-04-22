@@ -16,7 +16,7 @@ export default function PricingPage() {
       {/* Pricing Cards */}
       <section className="py-20">
         <div className="container mx-auto px-4">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 max-w-6xl mx-auto">
+          <div className="grid grid-cols-4 gap-4 max-w-7xl mx-auto">
             {/* Trial */}
             <div className="bg-white border-2 border-gray-200 rounded-lg p-8">
               <h3 className="text-2xl font-bold text-gray-900">Free Trial</h3>
