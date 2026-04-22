@@ -234,6 +234,7 @@ class SchemaConverter:
             ("BLOB", "BYTEA"),
             ("LONG RAW", "BYTEA"),
             ("RAW", "BYTEA"),
+            ("DATE", "TIMESTAMP WITHOUT TIME ZONE"),
         ]:
             result = re.sub(rf"\b{oracle_type}\b", pg_type, result, flags=re.IGNORECASE)
 

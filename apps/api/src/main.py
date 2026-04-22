@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, Form, Depends, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, Depends, HTTPException, status
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
@@ -14,15 +14,24 @@ import logging
 logger = logging.getLogger(__name__)
 
 from .db import get_db, create_tables
-from .models import Lead, AnalysisJob, JobStatus
+from .models import Lead, AnalysisJob, JobStatus, User
 from .config import settings
 from .analyzers.complexity_scorer import ComplexityScorer
 from .reports.pdf_generator import PDFReportGenerator
 from .converters.schema_converter import SchemaConverter
 from .converters.plsql_converter import PlSqlConverter
 from .converters.oracle_functions import OracleFunctionConverter
-from .rag import ConversionCaseStore, EmbeddingGenerator
-from .migrations import setup_rag_tables, setup_workflow_tables, setup_benchmark_tables
+try:
+    from .rag import ConversionCaseStore, EmbeddingGenerator
+    from .migrations import setup_rag_tables, setup_workflow_tables, setup_benchmark_tables
+except ImportError:
+    # RAG features optional for development
+    ConversionCaseStore = None
+    EmbeddingGenerator = None
+    setup_rag_tables = lambda db: None
+    setup_workflow_tables = lambda db: None
+    setup_benchmark_tables = lambda db: None
+    logger.warning("RAG features disabled - sentence_transformers not installed")
 from .migration import DataMigrator, CheckpointManager
 from .migration.tasks import get_migration_manager
 from .connectors import ConnectionConfig, get_connection_manager
@@ -30,15 +39,22 @@ from .cost_calculator import CostCalculator, DatabaseSize, DeploymentType
 from .analyzers.permission_analyzer import PermissionAnalyzer, OraclePrivilegeExtractor
 from .analyzers.benchmark_analyzer import BenchmarkCapture, BenchmarkComparator
 from .llm.client import LLMClient
-from .models import MigrationWorkflow, BenchmarkCapture as BenchmarkCaptureModel
+from .models import MigrationWorkflow, BenchmarkCapture as BenchmarkCaptureModel, MigrationReport
 from .connectors.connection_pool import get_connection_pool, get_stats_cache
+from .routers import auth, account, billing, support
+from .auth.dependencies import get_optional_user
+from .services.billing import get_plan_limits
 
 app = FastAPI(title="Depart API", version="0.2.0")
 
 # CORS middleware
+cors_origins = [settings.frontend_url]
+if settings.environment == "development":
+    cors_origins.extend(["http://localhost:3000", "http://localhost:8000", "http://127.0.0.1:3000"])
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for now
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -163,20 +179,27 @@ UPLOADS_DIR.mkdir(exist_ok=True)
 
 @app.on_event("startup")
 def startup():
-    create_tables()
-    # Initialize RAG system (pgvector extension + conversion_cases table)
     try:
+        create_tables()
+        # Initialize RAG system (pgvector extension + conversion_cases table)
         db = next(get_db())
         setup_rag_tables(db)
         setup_workflow_tables(db)
         setup_benchmark_tables(db)
     except Exception as e:
-        print(f"Schema initialization warning: {e}")
+        logger.warning(f"Database initialization warning (API will run with limited functionality): {e}")
 
 
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+# Register routers
+app.include_router(auth.router)
+app.include_router(account.router)
+app.include_router(billing.router)
+app.include_router(support.router)
 
 
 @app.post("/api/v1/analyze")
@@ -185,12 +208,27 @@ async def analyze(
     email: str = Form(...),
     rate_per_day: int = Form(default=1000),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_optional_user),
 ):
     """
     Upload a zip file of Oracle DDL/PL-SQL and get complexity analysis.
-    Email is used to gate access and store results.
+    Email is used to gate access and store results (legacy).
+    Authenticated users are subject to plan limits.
     """
     try:
+        # Check plan limits if user is authenticated
+        if current_user:
+            limits = get_plan_limits(current_user.plan.value)
+
+            # Check migrations limit
+            if limits.get("migrations_per_month") is not None:
+                if current_user.migrations_used_this_month >= limits["migrations_per_month"]:
+                    raise HTTPException(
+                        status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                        detail=f"Monthly migration limit reached ({limits['migrations_per_month']})",
+                        headers={"X-Upgrade-URL": f"{settings.frontend_url}/billing"},
+                    )
+
         # Validate file size
         file_content = await file.read()
         file_size = len(file_content)
@@ -260,6 +298,11 @@ async def analyze(
             job.pdf_path = str(pdf_path)
             job.status = JobStatus.DONE
             job.completed_at = datetime.utcnow()
+
+            # Increment user's migration counter if authenticated
+            if current_user:
+                current_user.migrations_used_this_month += 1
+
             db.commit()
 
             return {
@@ -450,6 +493,8 @@ async def store_conversion_case(
     db: Session = Depends(get_db),
 ):
     """Store a conversion case for RAG pattern learning."""
+    if ConversionCaseStore is None:
+        raise HTTPException(status_code=503, detail="RAG features disabled")
     try:
         store = ConversionCaseStore(db)
         case_id = store.store_case(
@@ -472,6 +517,8 @@ async def get_similar_cases(
     db: Session = Depends(get_db),
 ):
     """Find similar conversion cases to provide context to Claude."""
+    if ConversionCaseStore is None:
+        raise HTTPException(status_code=503, detail="RAG features disabled")
     try:
         store = ConversionCaseStore(db)
         similar_cases = store.find_similar_cases(
@@ -508,6 +555,8 @@ async def get_similar_cases(
 @app.get("/api/v3/rag/pattern-stats/{construct_type}")
 async def get_pattern_statistics(construct_type: str, db: Session = Depends(get_db)):
     """Get statistics on conversion patterns for a construct type."""
+    if ConversionCaseStore is None:
+        raise HTTPException(status_code=503, detail="RAG features disabled")
     try:
         store = ConversionCaseStore(db)
         stats = store.get_pattern_stats(construct_type)
@@ -884,6 +933,67 @@ async def get_migration_checkpoints(migration_id: str, db: Session = Depends(get
         progress = checkpoint_manager.get_migration_progress(migration_id)
         return progress
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v3/migration/{migration_id}/report")
+async def get_migration_report(migration_id: str, db: Session = Depends(get_db)):
+    """Get migration progress report with conversion statistics."""
+    try:
+        from .models import MigrationRecord, MigrationCheckpointRecord
+
+        migration = db.query(MigrationRecord).filter(
+            MigrationRecord.id == uuid.UUID(migration_id)
+        ).first()
+
+        if not migration:
+            raise HTTPException(status_code=404, detail="Migration not found")
+
+        # Get all checkpoints for this migration
+        checkpoints = db.query(MigrationCheckpointRecord).filter(
+            MigrationCheckpointRecord.migration_id == uuid.UUID(migration_id)
+        ).all()
+
+        # Calculate conversion statistics
+        total_tables = len(checkpoints) if checkpoints else 0
+        completed_tables = sum(1 for cp in checkpoints if cp.status == "completed") if checkpoints else 0
+        conversion_percentage = (completed_tables / total_tables * 100) if total_tables > 0 else 0.0
+
+        # Count tests generated (assuming 1 test per completed checkpoint for now)
+        tests_generated = completed_tables
+
+        # Build risk breakdown (placeholder: all tables as "low" risk for now)
+        risk_breakdown = {
+            "high": 0,
+            "medium": 0,
+            "low": total_tables,
+        }
+
+        # Collect blockers from checkpoint error messages
+        blockers = []
+        for cp in checkpoints:
+            if cp.error_message:
+                blockers.append({
+                    "name": cp.table_name,
+                    "reason": cp.error_message,
+                })
+
+        return MigrationReport(
+            migration_id=migration_id,
+            total_objects=total_tables,
+            converted_count=completed_tables,
+            tests_generated=tests_generated,
+            conversion_percentage=conversion_percentage,
+            risk_breakdown=risk_breakdown,
+            blockers=blockers,
+            generated_at=datetime.utcnow().isoformat(),
+        )
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid migration ID format")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating migration report: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

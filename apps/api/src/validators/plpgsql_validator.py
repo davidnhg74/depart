@@ -114,7 +114,11 @@ class PlPgSQLValidator:
             if not re.search(r"\bAS\s*\$\$", code, re.IGNORECASE):
                 errors.append("Function definition missing AS $$ delimiter")
 
-        # LANGUAGE keyword should appear at function end
+            # Function must have LANGUAGE clause
+            if not re.search(r"\bLANGUAGE\s+\w+", code, re.IGNORECASE):
+                errors.append("Function definition missing LANGUAGE clause")
+
+        # LANGUAGE keyword should specify plpgsql for PL/pgSQL
         if re.search(r"LANGUAGE", code, re.IGNORECASE):
             if not re.search(r"\bLANGUAGE\s+plpgsql\b", code, re.IGNORECASE):
                 errors.append("LANGUAGE clause should specify 'plpgsql'")

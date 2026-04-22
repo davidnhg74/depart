@@ -164,7 +164,7 @@ class DeterministicRules:
             # Oracle: CREATE [OR REPLACE] FUNCTION name(...) RETURN type AS
             # PostgreSQL: CREATE [OR REPLACE] FUNCTION name(...) RETURNS type AS $$
             result = re.sub(
-                r"CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(\w+)\s*\((.*?)\)\s+RETURN\s+(\w+)",
+                r"CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(\w+)\s*(?:\((.*?)\))?\s+RETURN\s+(\w+)\s+AS\b",
                 r"CREATE OR REPLACE FUNCTION \1(\2) RETURNS \3 AS $$",
                 result,
                 flags=re.IGNORECASE | re.DOTALL,
@@ -172,13 +172,13 @@ class DeterministicRules:
 
             # Add language clause at end if missing
             if not re.search(r"\$\$\s+LANGUAGE\s+plpgsql", result, re.IGNORECASE):
-                result = re.sub(r"END\s*;?\s*$", r"END;\n$$ LANGUAGE plpgsql;", result, flags=re.IGNORECASE | re.DOTALL)
+                result = re.sub(r"(END.*?;?)\s*$", r"\1\n$$ LANGUAGE plpgsql;", result, flags=re.IGNORECASE | re.DOTALL)
 
         elif construct_type.upper() == "PROCEDURE":
-            # Oracle: CREATE [OR REPLACE] PROCEDURE name(...) AS
-            # PostgreSQL: CREATE [OR REPLACE] PROCEDURE name(...) AS $$
+            # Oracle: CREATE [OR REPLACE] PROCEDURE name [...] AS
+            # PostgreSQL: CREATE [OR REPLACE] PROCEDURE name [...] AS $$
             result = re.sub(
-                r"CREATE\s+(?:OR\s+REPLACE\s+)?PROCEDURE\s+(\w+)\s*\((.*?)\)\s+AS\b",
+                r"CREATE\s+(?:OR\s+REPLACE\s+)?PROCEDURE\s+(\w+)\s*(?:\((.*?)\))?\s+AS\b",
                 r"CREATE OR REPLACE PROCEDURE \1(\2) AS $$",
                 result,
                 flags=re.IGNORECASE | re.DOTALL,
@@ -186,7 +186,7 @@ class DeterministicRules:
 
             # Add language clause at end
             if not re.search(r"\$\$\s+LANGUAGE\s+plpgsql", result, re.IGNORECASE):
-                result = re.sub(r"END\s*;?\s*$", r"END;\n$$ LANGUAGE plpgsql;", result, flags=re.IGNORECASE | re.DOTALL)
+                result = re.sub(r"(END.*?;?)\s*$", r"\1\n$$ LANGUAGE plpgsql;", result, flags=re.IGNORECASE | re.DOTALL)
 
         return result
 
@@ -204,15 +204,18 @@ class DeterministicRules:
         # PostgreSQL: v_name type;  (same, so no change needed)
 
         # But check for %TYPE usage (should work in PostgreSQL too)
-        # And ensure DECLARE section exists
+        # And ensure DECLARE section exists if there are declarations before BEGIN
         if re.search(r"\bBEGIN\b", result, re.IGNORECASE) and not re.search(r"\bDECLARE\b", result, re.IGNORECASE):
-            # Add DECLARE if missing
-            result = re.sub(
-                r"(CREATE\s+(?:OR\s+REPLACE\s+)?(?:PROCEDURE|FUNCTION)\s+\w+.*?\s+AS\s*\$\$\s*)\n(\s*)(BEGIN)",
-                r"\1\nDECLARE\n\2\3",
-                result,
-                flags=re.IGNORECASE | re.DOTALL,
-            )
+            # Check if there are variable declarations before BEGIN
+            # Oracle style: variable declarations between AS and BEGIN without DECLARE keyword
+            if re.search(r"AS\s*\$\$\s*\n\s+\w+\s+\w+.*?;.*?\n\s*BEGIN", result, re.IGNORECASE | re.DOTALL):
+                # Add DECLARE after AS $$
+                result = re.sub(
+                    r"(AS\s*\$\$)\s*\n",
+                    r"\1\nDECLARE\n",
+                    result,
+                    flags=re.IGNORECASE,
+                )
 
         return result
 

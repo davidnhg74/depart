@@ -6,16 +6,26 @@ from .config import settings
 
 Base = declarative_base()
 
-engine = create_engine(
-    settings.database_url,
-    echo=settings.environment == "development",
-    pool_pre_ping=True,
-)
+_engine: Engine | None = None
 
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+def get_engine() -> Engine:
+    global _engine
+    if _engine is None:
+        _engine = create_engine(
+            settings.database_url,
+            echo=settings.environment == "development",
+            pool_pre_ping=True,
+        )
+    return _engine
+
+
+def get_session_factory() -> sessionmaker:
+    return sessionmaker(autocommit=False, autoflush=False, bind=get_engine())
 
 
 def get_db() -> Session:
+    SessionLocal = get_session_factory()
     db = SessionLocal()
     try:
         yield db
@@ -25,6 +35,7 @@ def get_db() -> Session:
 
 @contextmanager
 def get_db_context():
+    SessionLocal = get_session_factory()
     db = SessionLocal()
     try:
         yield db
@@ -33,8 +44,8 @@ def get_db_context():
 
 
 def create_tables():
-    Base.metadata.create_all(bind=engine)
+    Base.metadata.create_all(bind=get_engine())
 
 
 def drop_tables():
-    Base.metadata.drop_all(bind=engine)
+    Base.metadata.drop_all(bind=get_engine())

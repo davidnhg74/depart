@@ -1,55 +1,72 @@
-version: "3.9"
+version: '3.8'
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:15-alpine
+    container_name: depart_postgres
     environment:
-      POSTGRES_USER: depart
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-depart_dev_pw}
-      POSTGRES_DB: depart_dev
+      POSTGRES_DB: depart
+      POSTGRES_USER: depart_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-depart_secure_password}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=C --lc-ctype=C"
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./apps/api/migrations/init.sql:/docker-entrypoint-initdb.d/01-init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U depart"]
-      interval: 5s
+      test: ["CMD-SHELL", "pg_isready -U depart_user -d depart"]
+      interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - depart_network
 
   api:
     build:
       context: ./apps/api
       dockerfile: Dockerfile
+    container_name: depart_api
     environment:
-      DATABASE_URL: postgresql://depart:${POSTGRES_PASSWORD:-depart_dev_pw}@postgres:5432/depart_dev
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
-      ENVIRONMENT: ${ENVIRONMENT:-development}
+      DATABASE_URL: postgresql://depart_user:${DB_PASSWORD:-depart_secure_password}@postgres:5432/depart
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
     ports:
       - "8000:8000"
-    volumes:
-      - ./apps/api/src:/app/src
-      - ./apps/api/tests:/app/tests
     depends_on:
       postgres:
         condition: service_healthy
-    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    networks:
+      - depart_network
+    restart: unless-stopped
 
   web:
     build:
       context: ./apps/web
       dockerfile: Dockerfile
-    environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8000
-      NEXT_PUBLIC_ENVIRONMENT: ${ENVIRONMENT:-development}
+    container_name: depart_web
     ports:
       - "3000:3000"
-    volumes:
-      - ./apps/web/app:/app/app
-      - ./apps/web/public:/app/public
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
     depends_on:
       - api
-    command: npm run dev
+    networks:
+      - depart_network
+    restart: unless-stopped
 
 volumes:
   postgres_data:
+    driver: local
+
+networks:
+  depart_network:
+    driver: bridge
