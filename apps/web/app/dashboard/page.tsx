@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import AuthGuard from '@/app/components/AuthGuard';
 import { useAuthStore } from '@/app/store/authStore';
 import { fetchCurrentUser } from '@/app/lib/api';
+import TokenUsageCard from '@/app/dashboard/components/TokenUsageCard';
 
 function DashboardContent() {
   const { user, setUser, isLoading, setLoading } = useAuthStore();
@@ -82,10 +83,10 @@ function DashboardContent() {
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>
             <div className="space-y-2">
               <button
-                onClick={() => window.location.href = '/'}
+                onClick={() => window.location.href = '/app-impact'}
                 className="w-full px-4 py-2 bg-purple-50 text-purple-600 font-medium rounded-md hover:bg-purple-100 text-left"
               >
-                Start Migration
+                Run App-Impact Analysis
               </button>
               <button
                 onClick={() => window.location.href = '/support'}
@@ -95,6 +96,10 @@ function DashboardContent() {
               </button>
             </div>
           </div>
+        </div>
+
+        <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <TokenUsageCard />
         </div>
       </div>
     </div>

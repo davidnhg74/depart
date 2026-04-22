@@ -36,6 +36,7 @@ from .connectors.connection_pool import get_connection_pool, get_stats_cache
 from .routers import auth, account, billing, support
 from .api.routes import app_impact as app_impact_route
 from .api.routes import runbook as runbook_route
+from .api.routes import usage as usage_route
 from .auth.dependencies import get_optional_user
 from .services.billing import get_plan_limits
 
@@ -183,6 +184,7 @@ app.include_router(billing.router)
 app.include_router(support.router)
 app.include_router(app_impact_route.router)
 app.include_router(runbook_route.router)
+app.include_router(usage_route.router)
 
 
 @app.post("/api/v1/analyze")

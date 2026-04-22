@@ -37,7 +37,21 @@ function makeClient(): AxiosInstance {
   return client;
 }
 
-export const api = makeClient();
+// Lazy singleton — vi.mock('axios') in component tests stubs `axios.create`
+// to undefined, so module-load-time construction would crash. The client is
+// built on first access and cached after.
+let _api: AxiosInstance | null = null;
+
+function getClient(): AxiosInstance {
+  if (_api === null) _api = makeClient();
+  return _api;
+}
+
+export const api: AxiosInstance = new Proxy({} as AxiosInstance, {
+  get(_target, prop) {
+    return Reflect.get(getClient(), prop);
+  },
+});
 
 /** Sign out: clears server-side session, drops cookies + auth store. */
 export async function logout(): Promise<void> {
