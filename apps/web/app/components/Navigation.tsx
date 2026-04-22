@@ -20,7 +20,7 @@ export default function Navigation() {
 
   const appLinks = [
     { href: '/analyzer', label: 'Analyzer', active: pathname === '/analyzer' },
-    { href: '/converter', label: 'Converter', active: pathname === '/converter' },
+    { href: '/app-impact', label: 'App Impact', active: pathname === '/app-impact' },
     { href: '/migration', label: 'Migration', active: pathname === '/migration' },
   ];
 
