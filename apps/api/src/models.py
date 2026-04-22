@@ -108,3 +108,33 @@ class MigrationCheckpointRecord(Base):
     error_message = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class MigrationWorkflow(Base):
+    """Track Human-In-The-Loop migration workflow with DBA approvals."""
+
+    __tablename__ = "migration_workflows"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(255), nullable=False)
+    migration_id = Column(UUID(as_uuid=True), ForeignKey("migrations.id"), nullable=True)
+    current_step = Column(Integer, default=1, nullable=False)
+    status = Column(String(50), default="running", nullable=False, index=True)
+    dba_notes = Column(JSON, default=dict, nullable=False)
+    approvals = Column(JSON, default=dict, nullable=False)
+    settings = Column(JSON, default=dict, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class BenchmarkCapture(Base):
+    """Store Oracle and PostgreSQL benchmark metrics for comparison."""
+
+    __tablename__ = "benchmark_captures"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    migration_id = Column(UUID(as_uuid=True), ForeignKey("migrations.id"), nullable=True)
+    db_type = Column(String(20), nullable=False)  # "oracle" or "postgres"
+    captured_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    data = Column(JSON, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

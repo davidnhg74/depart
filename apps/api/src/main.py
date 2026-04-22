@@ -22,7 +22,7 @@ from .converters.schema_converter import SchemaConverter
 from .converters.plsql_converter import PlSqlConverter
 from .converters.oracle_functions import OracleFunctionConverter
 from .rag import ConversionCaseStore, EmbeddingGenerator
-from .migrations import setup_rag_tables
+from .migrations import setup_rag_tables, setup_workflow_tables, setup_benchmark_tables
 from .migration import DataMigrator, CheckpointManager
 from .migration.tasks import get_migration_manager
 from .connectors import ConnectionConfig, get_connection_manager
@@ -68,8 +68,10 @@ def startup():
     try:
         db = next(get_db())
         setup_rag_tables(db)
+        setup_workflow_tables(db)
+        setup_benchmark_tables(db)
     except Exception as e:
-        print(f"RAG initialization warning: {e}")
+        print(f"Schema initialization warning: {e}")
 
 
 @app.get("/health")
