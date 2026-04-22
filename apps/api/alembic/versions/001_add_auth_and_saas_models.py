@@ -17,23 +17,29 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Create enum types idempotently — Alembic env.py imports src.models for
-    # autogenerate, which can register these types on metadata before this
-    # migration runs (depending on SQLAlchemy version). checkfirst=True
-    # makes the CREATE TYPE a no-op if the type already exists.
-    bind = op.get_bind()
-    postgresql.ENUM(
+    # Define each enum once with create_type=False, then explicitly create
+    # them up front. Reusing the same instance in column definitions below
+    # ensures op.create_table doesn't re-emit CREATE TYPE for each table
+    # that uses the type (which is what the previous sa.Enum-per-column
+    # pattern was silently doing — sa.Enum's create_type=False flag does
+    # not always propagate through the dialect-specific DDL compiler).
+    plan_enum = postgresql.ENUM(
         "trial", "starter", "professional", "enterprise",
-        name="plan_enum",
-    ).create(bind, checkfirst=True)
-    postgresql.ENUM(
+        name="plan_enum", create_type=False,
+    )
+    ticket_status_enum = postgresql.ENUM(
         "open", "in_progress", "resolved", "closed",
-        name="ticket_status_enum",
-    ).create(bind, checkfirst=True)
-    postgresql.ENUM(
+        name="ticket_status_enum", create_type=False,
+    )
+    ticket_priority_enum = postgresql.ENUM(
         "low", "medium", "high", "critical",
-        name="ticket_priority_enum",
-    ).create(bind, checkfirst=True)
+        name="ticket_priority_enum", create_type=False,
+    )
+
+    bind = op.get_bind()
+    plan_enum.create(bind, checkfirst=True)
+    ticket_status_enum.create(bind, checkfirst=True)
+    ticket_priority_enum.create(bind, checkfirst=True)
 
     # Create users table
     op.create_table(
@@ -46,9 +52,7 @@ def upgrade() -> None:
         sa.Column('email_verify_token', sa.String(255), nullable=True),
         sa.Column('reset_token', sa.String(255), nullable=True),
         sa.Column('reset_token_expires', sa.DateTime(timezone=True), nullable=True),
-        sa.Column('plan', sa.Enum('trial', 'starter', 'professional', 'enterprise',
-                                  name='plan_enum', create_type=False),
-                  nullable=False, server_default='trial'),
+        sa.Column('plan', plan_enum, nullable=False, server_default='trial'),
         sa.Column('stripe_customer_id', sa.String(255), nullable=True),
         sa.Column('stripe_subscription_id', sa.String(255), nullable=True),
         sa.Column('subscription_status', sa.String(50), nullable=True),
@@ -86,9 +90,7 @@ def upgrade() -> None:
         sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False, server_default=sa.text("gen_random_uuid()")),
         sa.Column('user_id', postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column('stripe_subscription_id', sa.String(255), nullable=False, unique=True),
-        sa.Column('plan', sa.Enum('trial', 'starter', 'professional', 'enterprise',
-                                  name='plan_enum', create_type=False),
-                  nullable=False),
+        sa.Column('plan', plan_enum, nullable=False),
         sa.Column('status', sa.String(50), nullable=False),
         sa.Column('current_period_start', sa.DateTime(timezone=True), nullable=False),
         sa.Column('current_period_end', sa.DateTime(timezone=True), nullable=False),
@@ -105,12 +107,8 @@ def upgrade() -> None:
         sa.Column('id', postgresql.UUID(as_uuid=True), nullable=False, server_default=sa.text("gen_random_uuid()")),
         sa.Column('user_id', postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column('subject', sa.String(255), nullable=False),
-        sa.Column('status', sa.Enum('open', 'in_progress', 'resolved', 'closed',
-                                    name='ticket_status_enum', create_type=False),
-                  nullable=False, server_default='open'),
-        sa.Column('priority', sa.Enum('low', 'medium', 'high', 'critical',
-                                      name='ticket_priority_enum', create_type=False),
-                  nullable=False, server_default='medium'),
+        sa.Column('status', ticket_status_enum, nullable=False, server_default='open'),
+        sa.Column('priority', ticket_priority_enum, nullable=False, server_default='medium'),
         sa.Column('requester_email', sa.String(255), nullable=False),
         sa.Column('created_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
         sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
