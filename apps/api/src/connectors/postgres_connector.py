@@ -260,6 +260,55 @@ class PostgresConnector:
             "last_check": self.last_check.isoformat() if self.last_check else None,
         }
 
+    def get_column_metadata(
+        self,
+        schema_name: str = "public",
+        table_names: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Query PostgreSQL information_schema for column metadata.
+        Returns list of dicts with table_name, column_name, data_type, character_maximum_length,
+        numeric_precision, numeric_scale, is_nullable, udt_name.
+
+        Args:
+            schema_name: Schema name (default "public").
+            table_names: Optional list of table names to filter. If None, returns all.
+
+        Returns:
+            List of column metadata dicts.
+        """
+        session = self.get_session()
+        try:
+            table_filter = ""
+            if table_names:
+                names = ", ".join(f"'{t.lower()}'" for t in table_names)
+                table_filter = f"AND table_name IN ({names})"
+
+            sql = f"""
+                SELECT
+                    table_name,
+                    column_name,
+                    data_type,
+                    character_maximum_length,
+                    numeric_precision,
+                    numeric_scale,
+                    is_nullable,
+                    udt_name
+                FROM information_schema.columns
+                WHERE table_schema = '{schema_name}'
+                {table_filter}
+                ORDER BY table_name, ordinal_position
+            """
+
+            rows = session.execute(text(sql)).mappings().all()
+            return [dict(r) for r in rows]
+
+        except Exception as e:
+            logger.error(f"Error fetching column metadata: {e}")
+            return []
+        finally:
+            session.close()
+
     def close(self):
         """Close connection pool."""
         if self.engine:

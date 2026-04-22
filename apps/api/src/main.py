@@ -9,6 +9,9 @@ import os
 from pathlib import Path
 from datetime import datetime
 import zipfile
+import logging
+
+logger = logging.getLogger(__name__)
 
 from .db import get_db, create_tables
 from .models import Lead, AnalysisJob, JobStatus
@@ -485,6 +488,104 @@ async def analyze_migration_costs(request: CostAnalysisRequest) -> dict:
         raise HTTPException(status_code=400, detail=f"Invalid parameter: {e}")
     except Exception as e:
         logger.error(f"Cost analysis error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# Semantic Error Detection
+# ============================================================================
+
+class SemanticAnalysisRequest(BaseModel):
+    oracle_ddl: Optional[str] = None
+    pg_ddl: Optional[str] = None
+    oracle_connection_id: Optional[str] = None
+    pg_connection_id: Optional[str] = None
+    schema_name: Optional[str] = None
+    table_names: Optional[list[str]] = None
+
+
+class SemanticIssueResponse(BaseModel):
+    severity: str
+    issue_type: str
+    affected_object: str
+    oracle_type: str
+    pg_type: str
+    description: str
+    recommendation: str
+
+
+class SemanticAnalysisResponse(BaseModel):
+    mode: str
+    analyzed_objects: int
+    issues: list[SemanticIssueResponse]
+    summary: dict
+
+
+@app.post("/api/v3/analyze/semantic")
+async def analyze_semantic(request: SemanticAnalysisRequest) -> SemanticAnalysisResponse:
+    """
+    Detect semantic type-mapping risks in Oracle → PostgreSQL migration.
+    Supports both static (DDL text) and live (DB connections) modes.
+    """
+    from .analyzers.semantic_analyzer import SemanticAnalyzer
+    from .llm.client import LLMClient
+
+    try:
+        analyzer = SemanticAnalyzer(LLMClient())
+
+        # Determine mode
+        if request.oracle_connection_id and request.pg_connection_id:
+            manager = get_connection_manager()
+            oracle_conn = manager.get_connector(request.oracle_connection_id)
+            pg_conn = manager.get_connector(request.pg_connection_id)
+
+            if not oracle_conn or not pg_conn:
+                raise HTTPException(
+                    status_code=400,
+                    detail="One or both connection IDs not found",
+                )
+
+            result = analyzer.analyze_live(
+                oracle_conn,
+                pg_conn,
+                schema_name=request.schema_name,
+            )
+        elif request.oracle_ddl and request.pg_ddl:
+            result = analyzer.analyze_static(request.oracle_ddl, request.pg_ddl)
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="Provide either (oracle_ddl + pg_ddl) or (oracle_connection_id + pg_connection_id)",
+            )
+
+        # Build severity summary
+        from collections import Counter
+        counts = Counter(i.severity for i in result.issues)
+
+        return SemanticAnalysisResponse(
+            mode=result.mode,
+            analyzed_objects=result.analyzed_objects,
+            issues=[SemanticIssueResponse(
+                severity=i.severity,
+                issue_type=i.issue_type,
+                affected_object=i.affected_object,
+                oracle_type=i.oracle_type,
+                pg_type=i.pg_type,
+                description=i.description,
+                recommendation=i.recommendation,
+            ) for i in result.issues],
+            summary={
+                "critical": counts.get("CRITICAL", 0),
+                "error": counts.get("ERROR", 0),
+                "warning": counts.get("WARNING", 0),
+                "info": counts.get("INFO", 0),
+                "total": len(result.issues),
+            },
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Semantic analysis error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

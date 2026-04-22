@@ -268,6 +268,57 @@ class OracleConnector:
             "last_check": self.last_check.isoformat() if self.last_check else None,
         }
 
+    def get_column_metadata(
+        self,
+        schema_name: Optional[str] = None,
+        table_names: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Query Oracle data dictionary for column metadata.
+        Returns list of dicts with table_name, column_name, data_type, data_precision,
+        data_scale, char_used (B=BYTE/C=CHAR), nullable.
+
+        Args:
+            schema_name: Optional schema/owner name (e.g., "HR"). If None, uses current user.
+            table_names: Optional list of table names to filter. If None, returns all.
+
+        Returns:
+            List of column metadata dicts.
+        """
+        session = self.get_session()
+        try:
+            owner_filter = f"AND owner = UPPER('{schema_name}')" if schema_name else ""
+            table_filter = ""
+            if table_names:
+                names = ", ".join(f"'{t.upper()}'" for t in table_names)
+                table_filter = f"AND table_name IN ({names})"
+
+            sql = f"""
+                SELECT
+                    table_name,
+                    column_name,
+                    data_type,
+                    data_length,
+                    data_precision,
+                    data_scale,
+                    char_used,
+                    nullable
+                FROM {'all_tab_columns' if schema_name else 'user_tab_columns'}
+                WHERE 1=1
+                {owner_filter}
+                {table_filter}
+                ORDER BY table_name, column_id
+            """
+
+            rows = session.execute(text(sql)).mappings().all()
+            return [dict(r) for r in rows]
+
+        except Exception as e:
+            logger.error(f"Error fetching column metadata: {e}")
+            return []
+        finally:
+            session.close()
+
     def close(self):
         """Close connection pool."""
         if self.engine:
