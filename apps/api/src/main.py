@@ -27,6 +27,10 @@ from .migration import DataMigrator, CheckpointManager
 from .migration.tasks import get_migration_manager
 from .connectors import ConnectionConfig, get_connection_manager
 from .cost_calculator import CostCalculator, DatabaseSize, DeploymentType
+from .analyzers.permission_analyzer import PermissionAnalyzer, OraclePrivilegeExtractor
+from .analyzers.benchmark_analyzer import BenchmarkCapture, BenchmarkComparator
+from .llm.client import LLMClient
+from .models import MigrationWorkflow, BenchmarkCapture as BenchmarkCaptureModel
 
 app = FastAPI(title="Depart API", version="0.2.0")
 
@@ -54,6 +58,69 @@ class JobResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ============================================================================
+# Phase 3.3: HITL Workflow, Permissions, and Benchmarking Models
+# ============================================================================
+
+class PermissionAnalysisRequest(BaseModel):
+    oracle_connection_id: Optional[str] = None
+    oracle_privileges_json: Optional[str] = None
+
+
+class PermissionAnalysisResponse(BaseModel):
+    mappings: list[dict]
+    unmappable: list[dict]
+    grant_sql: list[str]
+    overall_risk: str
+    analyzed_at: str
+
+
+class WorkflowCreateRequest(BaseModel):
+    name: str
+    migration_id: Optional[str] = None
+
+
+class WorkflowResponse(BaseModel):
+    id: str
+    name: str
+    migration_id: Optional[str]
+    current_step: int
+    status: str
+    dba_notes: dict
+    approvals: dict
+    settings: dict
+    created_at: str
+    updated_at: str
+
+
+class ApprovalRequest(BaseModel):
+    approved_by: str
+    notes: Optional[str] = None
+
+
+class RejectionRequest(BaseModel):
+    reason: str
+    notes: Optional[str] = None
+
+
+class WorkflowSettingsRequest(BaseModel):
+    settings: dict
+
+
+class BenchmarkCaptureRequest(BaseModel):
+    oracle_connection_id: Optional[str] = None
+    postgres_connection_id: Optional[str] = None
+    migration_id: Optional[str] = None
+
+
+class BenchmarkComparisonResponse(BaseModel):
+    migration_id: Optional[str]
+    query_comparisons: list[dict]
+    table_comparisons: list[dict]
+    overall_assessment: str
+    generated_at: str
 
 
 # Create uploads directory
@@ -784,6 +851,394 @@ async def get_migration_checkpoints(migration_id: str, db: Session = Depends(get
         progress = checkpoint_manager.get_migration_progress(migration_id)
         return progress
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# Phase 3.3: Permission Analysis Endpoints
+# ============================================================================
+
+@app.post("/api/v3/analyze/permissions")
+async def analyze_permissions(request: PermissionAnalysisRequest, db: Session = Depends(get_db)):
+    """
+    Analyze Oracle permissions and map to PostgreSQL GRANT statements.
+    Accepts either oracle_connection_id or oracle_privileges_json.
+    """
+    try:
+        llm_client = LLMClient()
+        analyzer = PermissionAnalyzer(llm_client)
+
+        if request.oracle_privileges_json:
+            result = analyzer.analyze_from_json(request.oracle_privileges_json)
+        elif request.oracle_connection_id:
+            # TODO: Get connection from connection manager
+            raise HTTPException(status_code=501, detail="Direct connection analysis not yet implemented")
+        else:
+            raise HTTPException(status_code=400, detail="Either oracle_connection_id or oracle_privileges_json required")
+
+        return PermissionAnalysisResponse(
+            mappings=[{
+                "oracle_privilege": m.oracle_privilege,
+                "pg_equivalent": m.pg_equivalent,
+                "risk_level": m.risk_level,
+                "recommendation": m.recommendation,
+                "grant_sql": m.grant_sql,
+            } for m in result.mappings],
+            unmappable=[{
+                "oracle_privilege": u.oracle_privilege,
+                "reason": u.reason,
+                "workaround": u.workaround,
+                "risk_level": u.risk_level,
+            } for u in result.unmappable],
+            grant_sql=result.grant_sql,
+            overall_risk=result.overall_risk,
+            analyzed_at=result.analyzed_at,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error analyzing permissions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# Phase 3.3: Migration Workflow Endpoints
+# ============================================================================
+
+@app.post("/api/v3/workflow/create")
+async def create_workflow(request: WorkflowCreateRequest, db: Session = Depends(get_db)):
+    """Create a new migration workflow for HITL orchestration."""
+    try:
+        workflow = MigrationWorkflow(
+            name=request.name,
+            migration_id=uuid.UUID(request.migration_id) if request.migration_id else None,
+            current_step=1,
+            status="running",
+            dba_notes={},
+            approvals={},
+            settings={},
+        )
+        db.add(workflow)
+        db.commit()
+        db.refresh(workflow)
+
+        return WorkflowResponse(
+            id=str(workflow.id),
+            name=workflow.name,
+            migration_id=str(workflow.migration_id) if workflow.migration_id else None,
+            current_step=workflow.current_step,
+            status=workflow.status,
+            dba_notes=workflow.dba_notes,
+            approvals=workflow.approvals,
+            settings=workflow.settings,
+            created_at=workflow.created_at.isoformat(),
+            updated_at=workflow.updated_at.isoformat(),
+        )
+    except Exception as e:
+        logger.error(f"Error creating workflow: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v3/workflow/{workflow_id}")
+async def get_workflow(workflow_id: str, db: Session = Depends(get_db)):
+    """Get workflow details and current status."""
+    try:
+        workflow = db.query(MigrationWorkflow).filter(
+            MigrationWorkflow.id == uuid.UUID(workflow_id)
+        ).first()
+
+        if not workflow:
+            raise HTTPException(status_code=404, detail="Workflow not found")
+
+        return WorkflowResponse(
+            id=str(workflow.id),
+            name=workflow.name,
+            migration_id=str(workflow.migration_id) if workflow.migration_id else None,
+            current_step=workflow.current_step,
+            status=workflow.status,
+            dba_notes=workflow.dba_notes,
+            approvals=workflow.approvals,
+            settings=workflow.settings,
+            created_at=workflow.created_at.isoformat(),
+            updated_at=workflow.updated_at.isoformat(),
+        )
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid workflow ID format")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving workflow: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v3/workflow/{workflow_id}/approve/{step}")
+async def approve_workflow_step(
+    workflow_id: str,
+    step: int,
+    request: ApprovalRequest,
+    db: Session = Depends(get_db),
+):
+    """Approve a DBA review step and advance workflow."""
+    try:
+        workflow = db.query(MigrationWorkflow).filter(
+            MigrationWorkflow.id == uuid.UUID(workflow_id)
+        ).first()
+
+        if not workflow:
+            raise HTTPException(status_code=404, detail="Workflow not found")
+
+        # Record approval
+        approvals = workflow.approvals or {}
+        approvals[str(step)] = {
+            "approved_by": request.approved_by,
+            "approved_at": datetime.utcnow().isoformat(),
+            "notes": request.notes or "",
+        }
+        workflow.approvals = approvals
+
+        # Advance to next step if this is the current step
+        if workflow.current_step == step:
+            workflow.current_step += 1
+
+        workflow.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(workflow)
+
+        return WorkflowResponse(
+            id=str(workflow.id),
+            name=workflow.name,
+            migration_id=str(workflow.migration_id) if workflow.migration_id else None,
+            current_step=workflow.current_step,
+            status=workflow.status,
+            dba_notes=workflow.dba_notes,
+            approvals=workflow.approvals,
+            settings=workflow.settings,
+            created_at=workflow.created_at.isoformat(),
+            updated_at=workflow.updated_at.isoformat(),
+        )
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid workflow ID format")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error approving workflow step: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v3/workflow/{workflow_id}/reject/{step}")
+async def reject_workflow_step(
+    workflow_id: str,
+    step: int,
+    request: RejectionRequest,
+    db: Session = Depends(get_db),
+):
+    """Reject a workflow step and set status to blocked."""
+    try:
+        workflow = db.query(MigrationWorkflow).filter(
+            MigrationWorkflow.id == uuid.UUID(workflow_id)
+        ).first()
+
+        if not workflow:
+            raise HTTPException(status_code=404, detail="Workflow not found")
+
+        # Record rejection in dba_notes
+        dba_notes = workflow.dba_notes or {}
+        dba_notes[f"step_{step}_rejection"] = {
+            "reason": request.reason,
+            "rejected_at": datetime.utcnow().isoformat(),
+            "notes": request.notes or "",
+        }
+        workflow.dba_notes = dba_notes
+        workflow.status = "blocked"
+        workflow.updated_at = datetime.utcnow()
+
+        db.commit()
+        db.refresh(workflow)
+
+        return WorkflowResponse(
+            id=str(workflow.id),
+            name=workflow.name,
+            migration_id=str(workflow.migration_id) if workflow.migration_id else None,
+            current_step=workflow.current_step,
+            status=workflow.status,
+            dba_notes=workflow.dba_notes,
+            approvals=workflow.approvals,
+            settings=workflow.settings,
+            created_at=workflow.created_at.isoformat(),
+            updated_at=workflow.updated_at.isoformat(),
+        )
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid workflow ID format")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error rejecting workflow step: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v3/workflow/{workflow_id}/settings")
+async def update_workflow_settings(
+    workflow_id: str,
+    request: WorkflowSettingsRequest,
+    db: Session = Depends(get_db),
+):
+    """Update workflow settings."""
+    try:
+        workflow = db.query(MigrationWorkflow).filter(
+            MigrationWorkflow.id == uuid.UUID(workflow_id)
+        ).first()
+
+        if not workflow:
+            raise HTTPException(status_code=404, detail="Workflow not found")
+
+        workflow.settings = request.settings
+        workflow.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(workflow)
+
+        return WorkflowResponse(
+            id=str(workflow.id),
+            name=workflow.name,
+            migration_id=str(workflow.migration_id) if workflow.migration_id else None,
+            current_step=workflow.current_step,
+            status=workflow.status,
+            dba_notes=workflow.dba_notes,
+            approvals=workflow.approvals,
+            settings=workflow.settings,
+            created_at=workflow.created_at.isoformat(),
+            updated_at=workflow.updated_at.isoformat(),
+        )
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid workflow ID format")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating workflow settings: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v3/workflow/{workflow_id}/progress")
+async def get_workflow_progress(workflow_id: str, db: Session = Depends(get_db)):
+    """Get workflow progress summary."""
+    try:
+        workflow = db.query(MigrationWorkflow).filter(
+            MigrationWorkflow.id == uuid.UUID(workflow_id)
+        ).first()
+
+        if not workflow:
+            raise HTTPException(status_code=404, detail="Workflow not found")
+
+        return {
+            "id": str(workflow.id),
+            "current_step": workflow.current_step,
+            "total_steps": 20,
+            "progress_percentage": (workflow.current_step / 20) * 100,
+            "status": workflow.status,
+            "approvals_count": len([a for a in workflow.approvals.values() if a]),
+            "created_at": workflow.created_at.isoformat(),
+            "updated_at": workflow.updated_at.isoformat(),
+        }
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid workflow ID format")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting workflow progress: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# Phase 3.3: Benchmark Analysis Endpoints
+# ============================================================================
+
+@app.post("/api/v3/benchmark/capture-oracle")
+async def capture_oracle_benchmark(request: BenchmarkCaptureRequest, db: Session = Depends(get_db)):
+    """Capture Oracle performance baseline from v$sql."""
+    try:
+        # TODO: Get Oracle connection from connection manager
+        raise HTTPException(status_code=501, detail="Oracle benchmark capture not yet implemented")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error capturing Oracle benchmark: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v3/benchmark/capture-postgres")
+async def capture_postgres_benchmark(request: BenchmarkCaptureRequest, db: Session = Depends(get_db)):
+    """Capture PostgreSQL performance metrics from pg_stat_statements."""
+    try:
+        # TODO: Get PostgreSQL connection from connection manager
+        raise HTTPException(status_code=501, detail="PostgreSQL benchmark capture not yet implemented")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error capturing PostgreSQL benchmark: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v3/benchmark/compare/{migration_id}")
+async def compare_benchmarks(migration_id: str, db: Session = Depends(get_db)):
+    """Compare Oracle and PostgreSQL benchmark captures for a migration."""
+    try:
+        # Query benchmark captures for this migration
+        oracle_capture = db.query(BenchmarkCaptureModel).filter(
+            BenchmarkCaptureModel.migration_id == uuid.UUID(migration_id),
+            BenchmarkCaptureModel.db_type == "oracle",
+        ).first()
+
+        postgres_capture = db.query(BenchmarkCaptureModel).filter(
+            BenchmarkCaptureModel.migration_id == uuid.UUID(migration_id),
+            BenchmarkCaptureModel.db_type == "postgres",
+        ).first()
+
+        if not oracle_capture or not postgres_capture:
+            raise HTTPException(status_code=404, detail="Benchmark captures not found")
+
+        # Reconstruct baseline and metrics from stored JSON
+        import json
+        from .analyzers.benchmark_analyzer import OracleBaseline, PostgresMetrics, QueryStat, TableStat
+
+        oracle_data = json.loads(oracle_capture.data) if isinstance(oracle_capture.data, str) else oracle_capture.data
+        postgres_data = json.loads(postgres_capture.data) if isinstance(postgres_capture.data, str) else postgres_capture.data
+
+        oracle_baseline = OracleBaseline(
+            captured_at=oracle_data["captured_at"],
+            top_queries=[QueryStat(**q) for q in oracle_data.get("top_queries", [])],
+            table_stats=[TableStat(**t) for t in oracle_data.get("table_stats", [])],
+            migration_id=oracle_data.get("migration_id"),
+        )
+
+        pg_metrics = PostgresMetrics(
+            captured_at=postgres_data["captured_at"],
+            top_queries=[QueryStat(**q) for q in postgres_data.get("top_queries", [])],
+            table_stats=[TableStat(**t) for t in postgres_data.get("table_stats", [])],
+            migration_id=postgres_data.get("migration_id"),
+        )
+
+        # Compare
+        llm_client = LLMClient()
+        report = BenchmarkComparator.compare(oracle_baseline, pg_metrics, llm_client)
+
+        return BenchmarkComparisonResponse(
+            migration_id=str(migration_id),
+            query_comparisons=[{
+                "sql_text": c.sql_text,
+                "oracle_avg_ms": c.oracle_avg_ms,
+                "pg_avg_ms": c.pg_avg_ms,
+                "speedup_factor": c.speedup_factor,
+                "verdict": c.verdict,
+            } for c in report.query_comparisons],
+            table_comparisons=report.table_comparisons,
+            overall_assessment=report.overall_assessment,
+            generated_at=report.generated_at,
+        )
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid migration ID format")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error comparing benchmarks: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Any
 from datetime import datetime
 import logging
+from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 
@@ -284,7 +285,3 @@ class PermissionAnalyzer:
             extracted_as_dba=oracle_privs_dict.get("extracted_as_dba", False),
         )
         return self.mapper.map_to_postgres(oracle_privs, self.llm)
-
-
-# SQLAlchemy text import for Oracle queries
-from sqlalchemy import text

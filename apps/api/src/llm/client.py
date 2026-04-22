@@ -119,3 +119,108 @@ IMPORTANT: Output ONLY valid JSON, no markdown, no explanation.
         except Exception as e:
             logger.error(f"Error detecting semantic issues: {e}")
             return []
+
+    def analyze_permission_mapping(self, oracle_privs_json: str) -> dict:
+        """
+        Map Oracle privileges to PostgreSQL equivalents using Claude.
+
+        Args:
+            oracle_privs_json: JSON string with system_privs, object_privs, role_grants, dba_users
+
+        Returns:
+            Dict with mappings, unmappable, and overall_risk fields
+        """
+        prompt = f"""You are an expert Oracle and PostgreSQL permission/grants engineer.
+
+Analyze these Oracle privileges and map each to PostgreSQL equivalents. Consider:
+1. System privileges → GRANT statements on roles, databases, schemas
+2. Object privileges → GRANT on tables, sequences, functions
+3. Role grants → CREATE ROLE + role membership via GRANT role_name TO user
+4. DBA users → PostgreSQL superuser or special roles
+5. Unmappable privileges → no direct PostgreSQL equivalent; suggest workarounds
+
+ORACLE PRIVILEGES DATA:
+{oracle_privs_json}
+
+IMPORTANT: Output ONLY valid JSON, no markdown, no explanation.
+
+{{
+  "mappings": [
+    {{
+      "oracle_privilege": "...",
+      "pg_equivalent": "GRANT ... ON ... TO ...",
+      "risk_level": 1-10,
+      "recommendation": "...",
+      "grant_sql": "GRANT ... ON ... TO ... ;"
+    }}
+  ],
+  "unmappable": [
+    {{
+      "oracle_privilege": "...",
+      "reason": "...",
+      "workaround": "...",
+      "risk_level": 1-10
+    }}
+  ],
+  "overall_risk": "LOW|MEDIUM|HIGH|CRITICAL"
+}}"""
+
+        try:
+            message = self.client.messages.create(
+                model=self.model,
+                max_tokens=4096,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            text = message.content[0].text.strip()
+
+            # Strip markdown code blocks if present
+            for prefix in ("```json", "```"):
+                if text.startswith(prefix):
+                    text = text[len(prefix):]
+            if text.endswith("```"):
+                text = text[:-3]
+            text = text.strip()
+
+            result = json.loads(text)
+            return result
+
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse permission mapping response as JSON: {e}")
+            return {"mappings": [], "unmappable": [], "overall_risk": "HIGH"}
+        except Exception as e:
+            logger.error(f"Error analyzing permission mapping: {e}")
+            return {"mappings": [], "unmappable": [], "overall_risk": "HIGH"}
+
+    def summarize_benchmark(self, report_json: str) -> str:
+        """
+        Generate a summary of benchmark comparison results using Claude.
+
+        Args:
+            report_json: JSON string with query_comparisons, table_comparisons, counts
+
+        Returns:
+            Plain text 2-3 sentence summary of benchmark results
+        """
+        prompt = f"""You are an expert database performance engineer comparing Oracle and PostgreSQL.
+
+Summarize the following benchmark comparison in 2-3 sentences. Focus on:
+1. Overall performance trend (PostgreSQL faster, slower, or equivalent)
+2. Most significant differences (if any)
+3. Recommendation for migration readiness
+
+BENCHMARK DATA:
+{report_json}
+
+Respond with ONLY the summary text, no JSON, no markdown."""
+
+        try:
+            message = self.client.messages.create(
+                model=self.model,
+                max_tokens=512,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            return message.content[0].text.strip()
+
+        except Exception as e:
+            logger.error(f"Error summarizing benchmark: {e}")
+            return "Benchmark comparison completed. Review detailed metrics above for analysis."
