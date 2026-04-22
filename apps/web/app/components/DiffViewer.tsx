@@ -1,6 +1,6 @@
 'use client';
 
-import Editor from '@monaco-editor/react';
+import Editor, { DiffEditor } from '@monaco-editor/react';
 import { useState } from 'react';
 
 interface DiffViewerProps {
@@ -76,36 +76,22 @@ export default function DiffViewer({
         </button>
       </div>
 
-      {/* Side-by-Side View */}
+      {/* Side-by-Side View with Diff Highlighting */}
       {activeTab === 'side-by-side' && (
-        <div className="flex gap-4 h-96">
-          {/* Original */}
-          <div className="flex-1 border border-gray-200 rounded-lg overflow-hidden">
-            <div className="bg-blue-50 px-3 py-2 border-b border-gray-200">
-              <h3 className="font-semibold text-sm text-blue-900">Oracle PL/SQL</h3>
-            </div>
-            <Editor
-              height="100%"
-              defaultLanguage="sql"
-              value={originalCode}
-              options={editorOptions}
-              theme="light"
-            />
-          </div>
-
-          {/* Converted */}
-          <div className="flex-1 border border-gray-200 rounded-lg overflow-hidden">
-            <div className="bg-green-50 px-3 py-2 border-b border-gray-200">
-              <h3 className="font-semibold text-sm text-green-900">PostgreSQL PL/pgSQL</h3>
-            </div>
-            <Editor
-              height="100%"
-              defaultLanguage="plpgsql"
-              value={convertedCode}
-              options={editorOptions}
-              theme="light"
-            />
-          </div>
+        <div className="border border-gray-200 rounded-lg overflow-hidden h-96">
+          <DiffEditor
+            height="100%"
+            original={originalCode}
+            modified={convertedCode}
+            language="sql"
+            theme="light"
+            options={{
+              ...editorOptions,
+              renderSideBySide: true,
+              readOnly: true,
+              scrollBeyondLastLine: false,
+            }}
+          />
         </div>
       )}
 
