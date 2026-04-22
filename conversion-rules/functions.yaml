@@ -1,0 +1,186 @@
+# Oracle → PostgreSQL Function Mapping Rules
+# Reference documentation for Phase 2 Core Converter
+# Python implementation is authoritative; this is for reference
+
+functions:
+  # Conditional Functions
+  - oracle: DECODE(expr, val1, result1, val2, result2, ..., default)
+    postgres: CASE expr WHEN val1 THEN result1 WHEN val2 THEN result2 ... ELSE default END
+    notes: "Most common Oracle conditional pattern"
+    tier: A
+    auto_convertible: true
+
+  - oracle: NVL(expr, default)
+    postgres: COALESCE(expr, default)
+    notes: "Direct replacement"
+    tier: A
+    auto_convertible: true
+
+  - oracle: NVL2(expr, if_not_null, if_null)
+    postgres: CASE WHEN expr IS NOT NULL THEN if_not_null ELSE if_null END
+    notes: "Three-way conditional"
+    tier: A
+    auto_convertible: true
+
+  # String Functions
+  - oracle: SUBSTR(str, start, length)
+    postgres: SUBSTRING(str FROM start FOR length)
+    notes: "Parameter order differs slightly"
+    tier: A
+    auto_convertible: true
+
+  - oracle: LISTAGG(column, ',') WITHIN GROUP (ORDER BY col)
+    postgres: STRING_AGG(column, ',' ORDER BY col)
+    notes: "Aggregation function"
+    tier: A
+    auto_convertible: true
+
+  - oracle: INSTR(str, substring)
+    postgres: POSITION(substring IN str)
+    notes: "Returns 1-based position"
+    tier: A
+    auto_convertible: true
+
+  - oracle: REGEXP_LIKE(str, pattern)
+    postgres: str ~ 'pattern'
+    notes: "Postgres uses ~ operator for regex"
+    tier: A
+    auto_convertible: true
+
+  # Date/Time Functions
+  - oracle: SYSDATE
+    postgres: CURRENT_DATE
+    notes: "Oracle DATE includes time; use CURRENT_TIMESTAMP for time"
+    tier: A
+    auto_convertible: true
+
+  - oracle: SYSTIMESTAMP
+    postgres: CURRENT_TIMESTAMP
+    notes: "Timestamp with time zone"
+    tier: A
+    auto_convertible: true
+
+  - oracle: TRUNC(date_col)
+    postgres: DATE_TRUNC('day', date_col)
+    notes: "Truncates to day; context-dependent for numbers"
+    tier: B
+    auto_convertible: false
+
+  - oracle: ADD_MONTHS(date, n)
+    postgres: date + (n || ' months')::interval
+    notes: "Requires interval casting"
+    tier: B
+    auto_convertible: false
+
+  - oracle: MONTHS_BETWEEN(date1, date2)
+    postgres: (date1 - date2)::numeric / 30.4
+    notes: "Approximate; review business logic"
+    tier: B
+    auto_convertible: false
+
+  # Aggregate Functions
+  - oracle: COUNT(DISTINCT expr)
+    postgres: COUNT(DISTINCT expr)
+    notes: "Direct replacement"
+    tier: A
+    auto_convertible: true
+
+  - oracle: WM_CONCAT(col)
+    postgres: STRING_AGG(col, ',')
+    notes: "Deprecated Oracle function; use LISTAGG in Oracle"
+    tier: A
+    auto_convertible: true
+
+  # Numeric Functions (mostly direct)
+  - oracle: ROUND(n, decimals)
+    postgres: ROUND(n, decimals)
+    notes: "Direct replacement"
+    tier: A
+    auto_convertible: true
+
+  - oracle: FLOOR(n)
+    postgres: FLOOR(n)
+    notes: "Direct replacement"
+    tier: A
+    auto_convertible: true
+
+  - oracle: CEIL(n)
+    postgres: CEIL(n)
+    notes: "Direct replacement"
+    tier: A
+    auto_convertible: true
+
+  - oracle: MOD(n, divisor)
+    postgres: MOD(n, divisor)
+    notes: "Direct replacement"
+    tier: A
+    auto_convertible: true
+
+  - oracle: POWER(base, exponent)
+    postgres: POWER(base, exponent)
+    notes: "Direct replacement"
+    tier: A
+    auto_convertible: true
+
+  # Type Conversion
+  - oracle: TO_CHAR(n)
+    postgres: TO_CHAR(n)
+    notes: "Mostly compatible; review format strings"
+    tier: B
+    auto_convertible: false
+
+  - oracle: TO_NUMBER(str)
+    postgres: "str::numeric or CAST(str AS numeric)"
+    notes: "Use casting operator"
+    tier: A
+    auto_convertible: true
+
+  - oracle: TO_DATE(str, format)
+    postgres: TO_DATE(str, format)
+    notes: "Format strings may need adjustment"
+    tier: B
+    auto_convertible: false
+
+  - oracle: CAST(expr AS type)
+    postgres: CAST(expr AS type)
+    notes: "Direct replacement"
+    tier: A
+    auto_convertible: true
+
+  # Analytic Functions (Tier B)
+  - oracle: ROW_NUMBER() OVER (ORDER BY col)
+    postgres: ROW_NUMBER() OVER (ORDER BY col)
+    notes: "Direct replacement; window functions work identically"
+    tier: A
+    auto_convertible: true
+
+  - oracle: RANK() OVER (ORDER BY col)
+    postgres: RANK() OVER (ORDER BY col)
+    notes: "Direct replacement"
+    tier: A
+    auto_convertible: true
+
+  - oracle: DENSE_RANK() OVER (ORDER BY col)
+    postgres: DENSE_RANK() OVER (ORDER BY col)
+    notes: "Direct replacement"
+    tier: A
+    auto_convertible: true
+
+  # Special
+  - oracle: ROWNUM
+    postgres: ROW_NUMBER() OVER (ORDER BY ...)
+    notes: "Context-dependent; often used for pagination"
+    tier: B
+    auto_convertible: false
+
+  - oracle: DUAL
+    postgres: Remove or replace with empty FROM clause
+    notes: "Postgres doesn't need DUAL for scalar selects"
+    tier: A
+    auto_convertible: true
+
+  - oracle: ROWID
+    postgres: CTID
+    notes: "Physical row identifier equivalent"
+    tier: B
+    auto_convertible: false

@@ -1,0 +1,234 @@
+# Oracle → PostgreSQL Language Construct Conversion Rules
+# Tier B and C patterns (complex, often require human review or LLM assistance)
+
+constructs:
+  # Tier B: Hard but Common
+
+  - name: CONNECT BY / Hierarchical Queries
+    oracle: |
+      SELECT ... FROM table t
+      START WITH condition
+      CONNECT BY PRIOR parent_id = child_id
+    postgres: |
+      WITH RECURSIVE cte AS (
+        SELECT ... FROM table WHERE <start_with_condition>
+        UNION ALL
+        SELECT t.* FROM table t
+        JOIN cte ON <connect_by_condition>
+      )
+      SELECT ... FROM cte
+    tier: B
+    difficulty: MEDIUM
+    lmm_guidance: "Convert hierarchical queries to recursive CTEs with explicit anchor and recursive branches"
+
+  - name: MERGE Statement
+    oracle: |
+      MERGE INTO target t
+      USING source s ON (t.id = s.id)
+      WHEN MATCHED THEN
+        UPDATE SET t.name = s.name
+      WHEN NOT MATCHED THEN
+        INSERT (id, name) VALUES (s.id, s.name)
+    postgres: |
+      INSERT INTO target (id, name) VALUES (...)
+      ON CONFLICT (id) DO UPDATE SET name = excluded.name
+    tier: B
+    difficulty: MEDIUM
+    notes: "PostgreSQL INSERT ... ON CONFLICT replaces MERGE for simple upserts"
+    llm_guidance: "Convert MERGE to INSERT ... ON CONFLICT; handle complex WHEN clauses carefully"
+
+  - name: DBMS_OUTPUT
+    oracle: "DBMS_OUTPUT.PUT_LINE('message')"
+    postgres: "RAISE NOTICE 'message'"
+    tier: B
+    difficulty: LOW
+    notes: "Direct replacement for logging in PL/pgSQL"
+
+  - name: Global Temporary Tables
+    oracle: |
+      CREATE GLOBAL TEMPORARY TABLE temp_table (
+        id NUMBER,
+        data VARCHAR2(100)
+      ) ON COMMIT DELETE ROWS;
+    postgres: |
+      CREATE TEMP TABLE temp_table (
+        id INTEGER,
+        data VARCHAR(100)
+      ) ON COMMIT DELETE ROWS;
+    tier: B
+    difficulty: LOW
+    notes: "PostgreSQL TEMP tables are session-scoped like Oracle GTT"
+
+  - name: "PL/SQL %TYPE and %ROWTYPE"
+    oracle: |
+      DECLARE
+        v_id employees.employee_id%TYPE;
+        v_rec employees%ROWTYPE;
+    postgres: |
+      DECLARE
+        v_id employees.employee_id%TYPE;
+        v_rec employees%ROWTYPE;
+    tier: A
+    difficulty: LOW
+    notes: "PL/pgSQL supports %TYPE and %ROWTYPE identically"
+
+  - name: Row-Level Security (VPD)
+    oracle: |
+      CREATE POLICY enable_rls ON employees
+      FOR SELECT USING (owner_id = current_user)
+    postgres: |
+      CREATE POLICY enable_rls ON employees
+      FOR SELECT USING (owner_id = current_user);
+      ALTER TABLE employees ENABLE ROW LEVEL SECURITY;
+    tier: B
+    difficulty: MEDIUM
+    notes: "PostgreSQL RLS is similar; enable with ALTER TABLE command"
+
+  # Tier C: Advanced
+
+  - name: Autonomous Transactions
+    oracle: |
+      PROCEDURE p AS
+      PRAGMA AUTONOMOUS_TRANSACTION;
+      BEGIN
+        INSERT INTO audit_table VALUES (...);
+        COMMIT;
+      END;
+    postgres: |
+      -- Use a separate connection or pg_background extension
+      -- Or refactor to avoid autonomous behavior
+      -- PRAGMA AUTONOMOUS_TRANSACTION is not supported
+    tier: C
+    difficulty: HIGH
+    notes: "PostgreSQL has no direct equivalent; requires architectural refactoring"
+    llm_guidance: "Flag PRAGMA AUTONOMOUS_TRANSACTION for manual refactoring"
+
+  - name: Package State (Session Variables)
+    oracle: |
+      CREATE PACKAGE pkg AS
+        g_user_id NUMBER;
+      END pkg;
+      -- In procedures: pkg.g_user_id := 123;
+    postgres: |
+      -- Use GUCs (custom_var_name) or application-level state
+      SET my_app.user_id = 123;
+      SELECT current_setting('my_app.user_id');
+    tier: C
+    difficulty: HIGH
+    notes: "PostgreSQL lacks package-scope variables; use GUCs or schema-scope functions"
+
+  - name: Object Types and Nested Tables
+    oracle: |
+      CREATE TYPE address_t AS OBJECT (
+        street VARCHAR2(100),
+        city VARCHAR2(50)
+      );
+      CREATE TYPE address_table IS TABLE OF address_t;
+    postgres: |
+      CREATE TYPE address_t AS (
+        street VARCHAR(100),
+        city VARCHAR(50)
+      );
+      -- Use ARRAY or decompose to separate table
+      CREATE TABLE addresses (
+        id INTEGER,
+        street VARCHAR(100),
+        city VARCHAR(50)
+      );
+    tier: C
+    difficulty: HIGH
+    notes: "PostgreSQL composite types are limited; normalize to separate tables"
+
+  - name: External Procedures / External Tables
+    oracle: |
+      CREATE PROCEDURE ext_proc AS EXTERNAL
+      LANGUAGE C LIBRARY ext_lib NAME 'c_function';
+    postgres: |
+      -- Use PostgreSQL extensions or stored procedures in Python/Perl/JavaScript
+      CREATE FUNCTION ext_proc() RETURNS ... AS 'plpython3u' LANGUAGE plpython3u;
+    tier: C
+    difficulty: HIGH
+    notes: "Oracle external procedures map to PostgreSQL dynamic language functions"
+
+  - name: DBMS_SCHEDULER
+    oracle: "DBMS_SCHEDULER.CREATE_JOB(...)"
+    postgres: "pg_cron extension or external scheduler (Kubernetes CronJob, etc.)"
+    tier: C
+    difficulty: HIGH
+    notes: "PostgreSQL scheduling requires external tools"
+    llm_guidance: "Flag DBMS_SCHEDULER for removal and external scheduling"
+
+  - name: DBMS_AQ (Advanced Queuing)
+    oracle: "DBMS_AQ.ENQUEUE(...)"
+    postgres: "Message brokers (RabbitMQ, Kafka) or LISTEN/NOTIFY"
+    tier: C
+    difficulty: HIGH
+    notes: "Oracle AQ maps to external message buses"
+
+  - name: DBMS_CRYPTO (Cryptography)
+    oracle: |
+      DBMS_CRYPTO.ENCRYPT(input, key, cipher)
+    postgres: |
+      pgcrypto extension: encrypt(input, key, 'aes')
+    tier: B
+    difficulty: MEDIUM
+    notes: "PostgreSQL pgcrypto provides similar functionality; test compatibility"
+
+  - name: Oracle Text (Full-Text Search)
+    oracle: |
+      CREATE INDEX idx_ft ON documents(content) INDEXTYPE IS CTXSYS.CONTEXT;
+      SELECT * FROM documents WHERE CONTAINS(content, 'query') > 0;
+    postgres: |
+      CREATE INDEX idx_ft ON documents USING GIN(to_tsvector('english', content));
+      SELECT * FROM documents WHERE to_tsvector('english', content) @@ to_tsquery('english', 'query');
+    tier: B
+    difficulty: MEDIUM
+    notes: "PostgreSQL full-text search is robust and similar semantics"
+
+  - name: DBMS_SPATIAL / Oracle Spatial
+    oracle: "MDSYS.SDO_GEOMETRY objects and spatial operators"
+    postgres: "PostGIS extension (points, lines, polygons, spatial indices)"
+    tier: C
+    difficulty: HIGH
+    notes: "PostGIS is the standard; test index performance and query semantics"
+
+automation_rules:
+  - rule: "DECODE → CASE"
+    automatable: true
+    llm_required: false
+    notes: "Deterministic pattern matching in oracle_functions.py"
+
+  - rule: "NVL → COALESCE"
+    automatable: true
+    llm_required: false
+    notes: "Simple regex replacement"
+
+  - rule: "NVL2 → CASE"
+    automatable: true
+    llm_required: false
+    notes: "Deterministic in oracle_functions.py"
+
+  - rule: "SYSDATE → CURRENT_DATE"
+    automatable: true
+    llm_required: false
+    notes: "Direct replacement"
+
+  - rule: "CONNECT BY → recursive CTE"
+    automatable: false
+    llm_required: true
+    notes: "Context-dependent hierarchical logic; LLM refactors to CTE"
+
+  - rule: "MERGE → INSERT ... ON CONFLICT"
+    automatable: false
+    llm_required: true
+    notes: "Complex WHEN clauses vary; LLM handles conversion"
+
+  - rule: "Autonomous transactions"
+    automatable: false
+    llm_required: true
+    notes: "Requires architectural analysis; flag for manual review"
+
+  - rule: "Package state (session variables)"
+    automatable: false
+    llm_required: true
+    notes: "Requires pattern analysis; refactor to GUCs or application state"

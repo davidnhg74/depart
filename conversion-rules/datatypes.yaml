@@ -1,0 +1,208 @@
+# Oracle → PostgreSQL Datatype Mapping Rules
+# Reference documentation for Phase 2 Core Converter
+
+datatypes:
+  # Numeric Types
+  - oracle: NUMBER
+    postgres: NUMERIC or NUMERIC(precision, scale)
+    risk: "HIGH if precision constraints reduce"
+    notes: "Oracle NUMBER is arbitrary precision; default to NUMERIC"
+    tier: A
+    auto_convertible: true
+
+  - oracle: NUMBER(p, s)
+    postgres: NUMERIC(p, s)
+    risk: "If p or s decreases, values may fail to insert"
+    notes: "Match precision exactly from Oracle schema"
+    tier: A
+    auto_convertible: true
+
+  - oracle: INTEGER
+    postgres: INTEGER or BIGINT
+    notes: "Oracle INTEGER is typically 38 digits; use BIGINT for safety"
+    tier: A
+    auto_convertible: true
+
+  - oracle: BINARY_INTEGER
+    postgres: INTEGER
+    notes: "Used in PL/SQL; convert to INTEGER in PL/pgSQL"
+    tier: A
+    auto_convertible: true
+
+  - oracle: FLOAT(p)
+    postgres: NUMERIC(p, *) or DOUBLE PRECISION
+    notes: "p is precision in bits; convert cautiously"
+    tier: B
+    auto_convertible: false
+
+  - oracle: REAL
+    postgres: REAL or NUMERIC
+    notes: "Floating-point; review precision requirements"
+    tier: B
+    auto_convertible: false
+
+  # String Types
+  - oracle: VARCHAR2(n BYTE)
+    postgres: VARCHAR(n)
+    risk: "CRITICAL: multibyte chars may exceed byte limit"
+    notes: "Use VARCHAR(n CHAR) in Oracle, VARCHAR(n) in Postgres with UTF-8"
+    tier: B
+    auto_convertible: false
+
+  - oracle: VARCHAR2(n CHAR)
+    postgres: VARCHAR(n)
+    notes: "n is character count; direct conversion"
+    tier: A
+    auto_convertible: true
+
+  - oracle: VARCHAR2(n)
+    postgres: VARCHAR(n)
+    notes: "Default to CHAR semantics in modern Oracle; usually safe"
+    tier: A
+    auto_convertible: true
+
+  - oracle: CHAR(n)
+    postgres: CHAR(n)
+    notes: "Fixed-length; direct replacement"
+    tier: A
+    auto_convertible: true
+
+  - oracle: NVARCHAR2(n)
+    postgres: VARCHAR(n)
+    notes: "National character set; UTF-8 in Postgres handles this"
+    tier: A
+    auto_convertible: true
+
+  - oracle: NCHAR(n)
+    postgres: CHAR(n)
+    notes: "National character; UTF-8 in Postgres"
+    tier: A
+    auto_convertible: true
+
+  - oracle: CLOB
+    postgres: TEXT
+    risk: "CLOB has constraints (triggers); TEXT is simpler"
+    notes: "Review any stored procedures that reference DBMS_LOB"
+    tier: A
+    auto_convertible: true
+
+  - oracle: LONG
+    postgres: TEXT
+    risk: "LONG is deprecated in Oracle; very restrictive (one per table)"
+    notes: "Switch to CLOB in Oracle first if possible"
+    tier: B
+    auto_convertible: false
+
+  # Binary Types
+  - oracle: BLOB
+    postgres: BYTEA
+    notes: "Binary large object; direct mapping"
+    tier: A
+    auto_convertible: true
+
+  - oracle: RAW(n)
+    postgres: BYTEA
+    notes: "Fixed-length binary; Postgres BYTEA is variable"
+    tier: A
+    auto_convertible: true
+
+  - oracle: LONG RAW
+    postgres: BYTEA
+    notes: "Variable-length binary; deprecated in Oracle"
+    tier: B
+    auto_convertible: false
+
+  # Date/Time Types
+  - oracle: DATE
+    postgres: TIMESTAMP or DATE
+    risk: "CRITICAL: Oracle DATE includes time; Postgres DATE does not"
+    notes: "If time matters, use TIMESTAMP; query may break on DATE"
+    tier: B
+    auto_convertible: false
+
+  - oracle: TIMESTAMP
+    postgres: TIMESTAMP or TIMESTAMP WITHOUT TIME ZONE
+    notes: "Oracle TIMESTAMP without TZ; direct conversion"
+    tier: A
+    auto_convertible: true
+
+  - oracle: TIMESTAMP(p)
+    postgres: TIMESTAMP(p) or TIMESTAMP(p) WITHOUT TIME ZONE
+    notes: "p is fractional seconds precision; direct conversion"
+    tier: A
+    auto_convertible: true
+
+  - oracle: TIMESTAMP WITH TIME ZONE
+    postgres: TIMESTAMP WITH TIME ZONE
+    notes: "Direct conversion; behavior identical"
+    tier: A
+    auto_convertible: true
+
+  - oracle: INTERVAL YEAR TO MONTH
+    postgres: INTERVAL
+    notes: "PostgreSQL INTERVAL is more flexible"
+    tier: A
+    auto_convertible: true
+
+  - oracle: INTERVAL DAY TO SECOND
+    postgres: INTERVAL
+    notes: "Direct conversion"
+    tier: A
+    auto_convertible: true
+
+  # Boolean
+  - oracle: "Number (0/1)"
+    postgres: BOOLEAN
+    risk: "No implicit cast from 0/1 to BOOLEAN in Postgres"
+    notes: "Use CASE WHEN x=1 THEN true ELSE false END"
+    tier: B
+    auto_convertible: false
+
+  # Compound Types (Advanced)
+  - oracle: OBJECT TYPE
+    postgres: Composite type or JSON/JSONB
+    notes: "Postgres composite types are limited; consider JSONB"
+    tier: C
+    auto_convertible: false
+
+  - oracle: NESTED TABLE
+    postgres: ARRAY or JSON/JSONB
+    notes: "No direct equivalent; use ARRAY or decompose to separate table"
+    tier: C
+    auto_convertible: false
+
+  - oracle: REF (reference)
+    postgres: Foreign key or JSON reference
+    notes: "Postgres uses FK constraints instead"
+    tier: C
+    auto_convertible: false
+
+  # Other
+  - oracle: ROWID
+    postgres: CTID
+    notes: "Internal row identifier; use with care (not stable)"
+    tier: B
+    auto_convertible: false
+
+  - oracle: UROWID
+    postgres: CTID or UUID
+    notes: "Universal ROWID; often replaced with natural key"
+    tier: C
+    auto_convertible: false
+
+semantic_rules:
+  - rule: "Oracle '' IS NULL; PostgreSQL '' IS NOT NULL"
+    impact: "NOT NULL constraints and application NULL checks may differ"
+    solution: "Audit application code for empty-string handling"
+
+  - rule: "Oracle NUMBER used as boolean (0/1) has no implicit cast in Postgres"
+    impact: "CASE/IF statements may fail"
+    solution: "Convert CASE WHEN x=1 THEN ... or add explicit CAST"
+
+  - rule: "Oracle TIMESTAMP BETWEEN comparison is microsecond-aware; Postgres differs"
+    impact: "BETWEEN ranges may include/exclude different records"
+    solution: "Verify business logic with date/time specialists"
+
+  - rule: "Oracle CHAR columns are space-padded; Postgres VARCHAR is not"
+    impact: "String comparisons and LIKE may differ"
+    solution: "Audit CHAR usage; prefer VARCHAR in new design"
