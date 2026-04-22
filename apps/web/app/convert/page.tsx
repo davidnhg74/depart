@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import axios from 'axios';
 import DiffViewer from '../components/DiffViewer';
+import SemanticIssuesPanel from '../components/SemanticIssuesPanel';
 import Editor from '@monaco-editor/react';
 
 type ConstructType = 'PROCEDURE' | 'FUNCTION' | 'TABLE' | 'VIEW' | 'SEQUENCE' | 'INDEX';
@@ -228,12 +229,19 @@ export default function ConvertPage() {
                 </div>
               </div>
             ) : (
-              <DiffViewer
-                originalCode={inputCode}
-                convertedCode={outputCode}
-                language="sql"
-                title="Conversion Result"
-              />
+              <div className="space-y-8">
+                <DiffViewer
+                  originalCode={inputCode}
+                  convertedCode={outputCode}
+                  language="sql"
+                  title="Conversion Result"
+                />
+                <SemanticIssuesPanel
+                  oracleDdl={inputCode}
+                  pgDdl={outputCode}
+                  autoAnalyze={success && constructType === 'TABLE'}
+                />
+              </div>
             )}
           </div>
         </div>
