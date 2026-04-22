@@ -80,7 +80,7 @@ export default function PricingPage() {
             </div>
 
             {/* Professional */}
-            <div className="bg-purple-600 text-white rounded-lg p-8 md:scale-105 shadow-xl">
+            <div className="bg-purple-600 text-white rounded-lg p-8 shadow-xl">
               <div className="bg-purple-700 text-white text-xs font-bold px-3 py-1 rounded-full inline-block mb-4">
                 MOST POPULAR
               </div>
