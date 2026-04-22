@@ -46,7 +46,28 @@ DIALECT = "oracle"
 
 
 def parse(source: str, *, name: str = "<inline>") -> Module:
-    """Parse Oracle DDL + PL/SQL into a canonical IR Module."""
+    """Parse Oracle DDL + PL/SQL into a canonical IR Module.
+
+    Dispatch order:
+      1. ANTLR-backed parser (`_visitor.parse_with_antlr`) when the
+         generated package exists. This is the production path; CI and
+         the Docker build always satisfy it.
+      2. Interim string/comment-aware parser. Local-dev fallback so
+         contributors aren't blocked before running `make grammar`.
+
+    The two paths produce the same `Module` shape — see
+    `tests/test_parser_equivalence.py` for the gating test.
+    """
+    from . import _visitor
+    if _visitor.is_available():
+        return _visitor.parse_with_antlr(source, name=name)
+    return _InterimParser(source, name).parse()
+
+
+def parse_with_interim(source: str, *, name: str = "<inline>") -> Module:
+    """Force the interim implementation. Useful for the equivalence test
+    and for callers that explicitly want stable behavior across grammar
+    regenerations."""
     return _InterimParser(source, name).parse()
 
 
