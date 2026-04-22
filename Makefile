@@ -33,6 +33,16 @@ grammar: ## Generate the ANTLR PL/SQL parser into src/source/oracle/_generated/
 grammar-force: ## Force-regenerate the ANTLR parser even if up-to-date
 	cd apps/api && python3 scripts/generate_grammar.py --force
 
+eval-app-impact: ## Run the app-impact AI prompt eval (requires ANTHROPIC_API_KEY)
+	cd apps/api && python3 -m src.ai.eval app_impact
+
+eval-runbook: ## Run the runbook AI prompt eval (requires ANTHROPIC_API_KEY)
+	cd apps/api && python3 -m src.ai.eval runbook
+
+eval-dry: ## Smoke-test the eval harness with a mocked LLM (no API calls)
+	cd apps/api && python3 -m src.ai.eval app_impact --dry || true
+	cd apps/api && python3 -m src.ai.eval runbook --dry || true
+
 migrate-rev: ## Generate a new Alembic revision: make migrate-rev MSG="add table x"
 	cd apps/api && alembic revision --autogenerate -m "$(MSG)"
 
