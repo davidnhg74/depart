@@ -345,14 +345,14 @@ export default function LandingPage() {
               <h4 className="text-white font-bold mb-4">Legal</h4>
               <ul className="space-y-2 text-sm">
                 <li>
-                  <a href="#" className="hover:text-white">
+                  <Link href="/privacy" className="hover:text-white">
                     Privacy
-                  </a>
+                  </Link>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-white">
+                  <Link href="/terms" className="hover:text-white">
                     Terms
-                  </a>
+                  </Link>
                 </li>
               </ul>
             </div>
