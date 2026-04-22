@@ -93,7 +93,7 @@ class PlSqlParser:
 
     def parse(self, content: str) -> ParserResult:
         """Parse Oracle PL/SQL content and return structured analysis."""
-        lines = content.split("\n")
+        lines = content.split("\n") if content.strip() else []
         total_lines = len(lines)
 
         result = ParserResult(total_lines=total_lines)
