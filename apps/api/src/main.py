@@ -2,7 +2,7 @@ from fastapi import FastAPI, UploadFile, File, Form, Depends, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from typing import Optional
 import uuid
 import os
@@ -18,6 +18,8 @@ from .reports.pdf_generator import PDFReportGenerator
 from .converters.schema_converter import SchemaConverter
 from .converters.plsql_converter import PlSqlConverter
 from .converters.oracle_functions import OracleFunctionConverter
+from .rag import ConversionCaseStore, EmbeddingGenerator
+from .migrations import setup_rag_tables
 
 app = FastAPI(title="Depart API", version="0.2.0")
 
@@ -55,6 +57,12 @@ UPLOADS_DIR.mkdir(exist_ok=True)
 @app.on_event("startup")
 def startup():
     create_tables()
+    # Initialize RAG system (pgvector extension + conversion_cases table)
+    try:
+        db = next(get_db())
+        setup_rag_tables(db)
+    except Exception as e:
+        print(f"RAG initialization warning: {e}")
 
 
 @app.get("/health")
@@ -301,6 +309,100 @@ async def convert_batch(batch: list[ConvertRequest]):
             )
 
         return {"results": results}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# Phase 3.1: RAG System Endpoints
+# ============================================================================
+
+class StoreConversionCaseRequest(BaseModel):
+    construct_type: str
+    oracle_code: str
+    postgres_code: str
+    success: bool = True
+
+
+class RAGContextRequest(BaseModel):
+    code: str
+    construct_type: str
+    top_k: int = 3
+
+
+class RAGContextResponse(BaseModel):
+    similar_cases: list[dict]
+    average_success_rate: float
+
+
+@app.post("/api/v3/rag/store-case")
+async def store_conversion_case(
+    request: StoreConversionCaseRequest,
+    db: Session = Depends(get_db),
+):
+    """Store a conversion case for RAG pattern learning."""
+    try:
+        store = ConversionCaseStore(db)
+        case_id = store.store_case(
+            construct_type=request.construct_type,
+            oracle_code=request.oracle_code,
+            postgres_code=request.postgres_code,
+            success=request.success,
+        )
+        return {
+            "case_id": case_id,
+            "status": "stored",
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v3/rag/similar-cases")
+async def get_similar_cases(
+    request: RAGContextRequest,
+    db: Session = Depends(get_db),
+):
+    """Find similar conversion cases to provide context to Claude."""
+    try:
+        store = ConversionCaseStore(db)
+        similar_cases = store.find_similar_cases(
+            oracle_code=request.code,
+            construct_type=request.construct_type,
+            top_k=request.top_k,
+        )
+
+        # Return case details
+        case_dicts = [
+            {
+                "oracle_code": case.oracle_code,
+                "postgres_code": case.postgres_code,
+                "success_rate": case.success_rate,
+                "similarity_score": score,
+            }
+            for case, score in similar_cases
+        ]
+
+        avg_success = (
+            sum(c["success_rate"] for c in case_dicts) / len(case_dicts)
+            if case_dicts
+            else 0.0
+        )
+
+        return RAGContextResponse(
+            similar_cases=case_dicts,
+            average_success_rate=avg_success,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v3/rag/pattern-stats/{construct_type}")
+async def get_pattern_statistics(construct_type: str, db: Session = Depends(get_db)):
+    """Get statistics on conversion patterns for a construct type."""
+    try:
+        store = ConversionCaseStore(db)
+        stats = store.get_pattern_stats(construct_type)
+        return stats
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

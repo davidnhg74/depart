@@ -15,11 +15,15 @@ dependencies = [
     "psycopg[binary]>=3.17.0",
     "pydantic>=2.5.0",
     "pydantic-settings>=2.1.0",
+    "pydantic-email>=2.0.0",
     "antlr4-python3-runtime>=4.13.1",
     "reportlab>=4.0.7",
     "anthropic>=0.20.0",
     "python-multipart>=0.0.6",
     "python-dotenv>=1.0.0",
+    "sentence-transformers>=2.2.0",
+    "pgvector>=0.2.0",
+    "numpy>=1.24.0",
 ]
 
 [project.optional-dependencies]
