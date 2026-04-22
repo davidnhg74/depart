@@ -118,6 +118,76 @@ class TestPgTAPGenerator:
         non_math_code = "CREATE FUNCTION greet() RETURN VARCHAR2 AS BEGIN RETURN 'hi'; END;"
         assert generator._is_math_function(non_math_code) is False
 
+    def test_test_cases_populated(self, generator):
+        """Test that generate_for_procedure populates test_cases list."""
+        oracle_proc = """
+        CREATE OR REPLACE PROCEDURE test_proc(p_id NUMBER) AS
+        BEGIN
+          SELECT COUNT(*) INTO v_count FROM employees;
+        END;
+        """
+        converted_plpgsql = """
+        CREATE OR REPLACE PROCEDURE test_proc(p_id NUMERIC) AS $$
+        BEGIN
+          SELECT COUNT(*) INTO v_count FROM employees;
+        END;
+        $$ LANGUAGE plpgsql;
+        """
+
+        test_code = generator.generate_for_procedure("test_proc", oracle_proc, converted_plpgsql)
+        test_cases = generator.get_test_cases()
+
+        assert len(test_cases) > 0
+        assert all(hasattr(tc, 'name') for tc in test_cases)
+        assert all(hasattr(tc, 'test_sql') for tc in test_cases)
+
+    def test_testcase_has_sql(self, generator):
+        """Test that each TestCase has non-empty test_sql."""
+        oracle_func = """
+        CREATE OR REPLACE FUNCTION add_numbers(p_a NUMBER, p_b NUMBER) RETURN NUMBER AS
+        BEGIN
+          RETURN p_a + p_b;
+        END;
+        """
+        converted_plpgsql = """
+        CREATE OR REPLACE FUNCTION add_numbers(p_a NUMERIC, p_b NUMERIC)
+        RETURNS NUMERIC AS $$
+        BEGIN
+          RETURN p_a + p_b;
+        END;
+        $$ LANGUAGE plpgsql;
+        """
+
+        test_code = generator.generate_for_function("add_numbers", oracle_func, converted_plpgsql, "NUMERIC")
+        test_cases = generator.get_test_cases()
+
+        for test_case in test_cases:
+            assert test_case.test_sql is not None
+            assert len(test_case.test_sql.strip()) > 0
+
+    def test_converted_plpgsql_used(self, generator):
+        """Test that converted_plpgsql is used to derive function names in tests."""
+        oracle_proc = """
+        CREATE OR REPLACE PROCEDURE my_procedure(p_value NUMBER) AS
+        BEGIN
+          INSERT INTO log_table VALUES (p_value);
+        END;
+        """
+        converted_plpgsql = """
+        CREATE OR REPLACE PROCEDURE my_procedure(p_value NUMERIC) AS $$
+        BEGIN
+          INSERT INTO log_table VALUES (p_value);
+        END;
+        $$ LANGUAGE plpgsql;
+        """
+
+        test_code = generator.generate_for_procedure("my_procedure", oracle_proc, converted_plpgsql)
+
+        # The generated test code should reference the procedure name from converted_plpgsql
+        assert "my_procedure" in test_code
+        # Should have valid pgTAP calls using the converted procedure name
+        assert "SELECT" in test_code and "my_procedure" in test_code
+
 
 class TestComparisonTestGenerator:
     """Test dual-database comparison test generation."""

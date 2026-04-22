@@ -24,16 +24,30 @@ class PgTAPGenerator:
 
     def generate_for_procedure(self, proc_name: str, original_oracle: str, converted_plpgsql: str) -> str:
         """Generate pgTAP test suite for a procedure."""
+        self.test_cases = []  # Reset test cases for new generation
         test_code = self._generate_test_header(proc_name)
 
         # Parse procedure to understand what it does
         params = self._extract_parameters(original_oracle)
         body_queries = self._extract_queries(original_oracle)
 
+        # Extract procedure name from converted code if available
+        converted_proc_name = self._extract_procedure_name(converted_plpgsql) or proc_name
+
         # Generate test cases
-        test_code += self._generate_basic_call_test(proc_name, params)
-        test_code += self._generate_null_input_tests(proc_name, params)
-        test_code += self._generate_edge_case_tests(proc_name, params, body_queries)
+        basic_test = self._generate_basic_call_test(converted_proc_name, params)
+        test_code += basic_test
+        self._add_test_case("Basic call", f"Basic call to {converted_proc_name}()", basic_test)
+
+        null_test = self._generate_null_input_tests(converted_proc_name, params)
+        test_code += null_test
+        if null_test.strip():
+            self._add_test_case("NULL handling", f"NULL parameter handling for {converted_proc_name}()", null_test)
+
+        edge_test = self._generate_edge_case_tests(converted_proc_name, params, body_queries)
+        test_code += edge_test
+        if edge_test.strip():
+            self._add_test_case("Edge cases", f"Edge case handling for {converted_proc_name}()", edge_test)
 
         test_code += self._generate_test_footer()
 
@@ -41,23 +55,56 @@ class PgTAPGenerator:
 
     def generate_for_function(self, func_name: str, original_oracle: str, converted_plpgsql: str, return_type: str) -> str:
         """Generate pgTAP test suite for a function."""
+        self.test_cases = []  # Reset test cases for new generation
         test_code = self._generate_test_header(func_name)
 
         # Parse function signature
         params = self._extract_parameters(original_oracle)
 
+        # Extract function name from converted code if available
+        converted_func_name = self._extract_function_name(converted_plpgsql) or func_name
+
         # Generate test cases
-        test_code += self._generate_function_return_type_test(func_name, return_type)
-        test_code += self._generate_basic_call_test(func_name, params)
-        test_code += self._generate_null_input_tests(func_name, params)
+        return_type_test = self._generate_function_return_type_test(converted_func_name, return_type)
+        test_code += return_type_test
+        self._add_test_case("Return type", f"Return type verification for {converted_func_name}()", return_type_test)
+
+        basic_test = self._generate_basic_call_test(converted_func_name, params)
+        test_code += basic_test
+        self._add_test_case("Basic call", f"Basic call to {converted_func_name}()", basic_test)
+
+        null_test = self._generate_null_input_tests(converted_func_name, params)
+        test_code += null_test
+        if null_test.strip():
+            self._add_test_case("NULL handling", f"NULL parameter handling for {converted_func_name}()", null_test)
 
         # If function appears to do math, test boundary values
         if self._is_math_function(original_oracle):
-            test_code += self._generate_math_edge_cases(func_name, params)
+            math_test = self._generate_math_edge_cases(converted_func_name, params)
+            test_code += math_test
+            self._add_test_case("Math edge cases", f"Math boundary tests for {converted_func_name}()", math_test)
 
         test_code += self._generate_test_footer()
 
         return test_code
+
+    def get_test_cases(self) -> List[TestCase]:
+        """Return the list of generated test cases."""
+        return self.test_cases
+
+    def _add_test_case(self, name: str, description: str, test_sql: str) -> None:
+        """Add a test case to the list."""
+        self.test_cases.append(TestCase(name=name, description=description, test_sql=test_sql))
+
+    def _extract_procedure_name(self, postgresql_code: str) -> Optional[str]:
+        """Extract procedure name from PostgreSQL CREATE PROCEDURE statement."""
+        match = re.search(r"CREATE\s+(?:OR\s+REPLACE\s+)?PROCEDURE\s+(\w+)", postgresql_code, re.IGNORECASE)
+        return match.group(1) if match else None
+
+    def _extract_function_name(self, postgresql_code: str) -> Optional[str]:
+        """Extract function name from PostgreSQL CREATE FUNCTION statement."""
+        match = re.search(r"CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(\w+)", postgresql_code, re.IGNORECASE)
+        return match.group(1) if match else None
 
     def _generate_test_header(self, proc_name: str) -> str:
         """Generate pgTAP test preamble."""
