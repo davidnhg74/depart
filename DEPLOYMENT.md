@@ -76,6 +76,33 @@ docker-compose exec api python -c "from src.db import create_tables; create_tabl
 psql -U hafen_user -d hafen -h localhost < apps/api/migrations/init.sql
 ```
 
+## Tenancy modes
+
+The same `apps/api` image runs in two modes, controlled by
+`ENABLE_SELF_HOSTED_AUTH`:
+
+| Mode | When | Tenancy behavior |
+|---|---|---|
+| **Single-tenant (self-hosted)** | `ENABLE_SELF_HOSTED_AUTH=false` (the default for the downloaded bundle) | Auth is a no-op; `caller` is `None`. Migrations, troubleshoot rows, audit events all carry `user_id IS NULL`. Listing/reading endpoints return everything in the install — appropriate for one operator owning the whole box. |
+| **Multi-tenant (cloud SaaS)** | `ENABLE_SELF_HOSTED_AUTH=true` (set by `apps/api/fly.toml` for hafen-api) | Every request resolves to an authenticated `User`. New rows on `migrations`, `troubleshoot_analyses`, etc. are stamped with `caller.id`. Read/write endpoints filter by `MigrationRecord.user_id == caller.id` via `_load_or_404_for_user` — cross-tenant access returns 404 (never 403, to avoid revealing existence). |
+
+When deploying the cloud SaaS, ALSO set:
+- `ENABLE_CLOUD_ROUTES=true` to mount signup/billing/support/cloud_analyze
+- `FRONTEND_URL=https://hafen.ai` (or your origin) for CORS + email links
+- A real `JWT_SECRET_KEY` (don't ship the default literal)
+- Stripe + Resend + Anthropic keys when those features are needed
+  (the stack runs in a graceful-degraded mode without them — billing
+  endpoints 503, emails no-op, troubleshoot returns a canned
+  "AI temporarily unavailable" response)
+
+The first admin user can be auto-created at startup via:
+- `HAFEN_ADMIN_EMAIL=...`
+- `HAFEN_ADMIN_PASSWORD=...`
+
+`maybe_bootstrap_from_env` runs once on container start; if those
+env vars are set AND no admin exists, the user is created with
+`role=admin`, `email_verified=true`. Idempotent on re-restart.
+
 ## Production Deployment
 
 ### 1. Configure Environment

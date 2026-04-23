@@ -16,6 +16,13 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # `conversion_cases` below uses pgvector's VECTOR(384) type. On a
+    # pre-baked dev image the extension is already installed; on a
+    # fresh managed Postgres (Fly MPG, Neon, Supabase, etc.) it is
+    # not, and alembic-on-container-boot would crash here. Enable it
+    # idempotently as the first DDL of the schema.
+    op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+
     op.create_table(
         "leads",
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False, server_default=sa.text("gen_random_uuid()")),
