@@ -17,6 +17,33 @@ import pytest
 from pathlib import Path
 
 
+# The bundled license public key at `src/license/public_key.pem` is
+# the PRODUCTION public key — its matching private key lives off the
+# laptop (see ~/.hafen-prod-keys/ and the launch runbook). Tests
+# continue to mint tokens with the DEV private key at
+# ~/.depart-keys/license_private_dev.pem; we patch the verifier at
+# session start to accept dev-signed tokens. Production installs are
+# unaffected (they always use the bundled prod key).
+@pytest.fixture(autouse=True, scope="session")
+def _use_dev_license_key_in_tests():
+    dev_pub_path = Path.home() / ".depart-keys" / "license_public_dev.pem"
+    if not dev_pub_path.exists():
+        # No dev keys on this machine — license-gated tests will be
+        # skipped via their own mint helpers; everything else runs.
+        yield
+        return
+
+    from src.license import verifier as _verifier
+
+    original = _verifier._load_public_key
+    dev_pub_pem = dev_pub_path.read_text()
+    _verifier._load_public_key = lambda: dev_pub_pem
+    try:
+        yield
+    finally:
+        _verifier._load_public_key = original
+
+
 @pytest.fixture
 def hr_schema_content():
     """Load Oracle HR schema for testing."""
