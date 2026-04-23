@@ -1,0 +1,41 @@
+# Fly.io deployment config for the Hafen marketing site at hafen.ai.
+# See docs at https://fly.io/docs/reference/configuration/
+
+app = "hafen"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile.fly"
+
+[build.args]
+  # Baked into the client bundle at build time — NEXT_PUBLIC_* can
+  # only be read by the browser if they exist at build.
+  NEXT_PUBLIC_ENABLE_CLOUD_ROUTES = "true"
+
+[env]
+  # Runtime env — safe to change without rebuilding.
+  NODE_ENV = "production"
+  NEXT_PUBLIC_ENABLE_CLOUD_ROUTES = "true"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  # Scale to zero when idle — marketing traffic is bursty and we're
+  # on the hobby tier. Cold-start penalty is ~2s, acceptable for a
+  # marketing page.
+  min_machines_running = 0
+  processes = ["app"]
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    timeout = "5s"
+    path = "/"
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
