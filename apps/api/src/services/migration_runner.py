@@ -365,6 +365,165 @@ def dry_run_plan(record: MigrationRecord) -> dict:
         src_engine.dispose()
 
 
+def advise_record(record: MigrationRecord, *, ai_client=None) -> dict:
+    """Per-table batch_size advice for `record`'s source schema.
+
+    Read-only: opens the source connection, introspects, runs the
+    deterministic advisor. If `ai_client` is supplied, Claude refines
+    the per-table batch sizes and emits operator-facing notes; failures
+    in the AI pass are swallowed and the deterministic baseline is
+    returned. Returns a dict with `per_table` and `notes` ready for the
+    router to wrap in a Pydantic response.
+
+    Row counts are not collected here — they require an extra round-trip
+    per table. Callers that already have them (from a prior introspect
+    pass or from the operator) can pass them in once that overload
+    exists; today we accept slightly less-tuned output.
+    """
+    from ..migrate.advisor import advise
+
+    if not record.source_url or not record.source_schema:
+        raise ValueError("source_url and source_schema are required")
+
+    src_dialect = Dialect.ORACLE if record.source_url.startswith("oracle") else Dialect.POSTGRES
+    src_engine = create_engine(record.source_url)
+    SrcSession = sessionmaker(bind=src_engine)
+    src_session = SrcSession()
+    try:
+        schema = introspect(src_session, src_dialect, record.source_schema)
+        wanted = _parse_tables(record.tables)
+        if wanted is not None:
+            schema.tables = [t for t in schema.tables if t.name in wanted]
+
+        advice = advise(schema, ai_client=ai_client)
+        return {
+            "used_ai": advice.used_ai,
+            "notes": list(advice.notes),
+            "per_table": [
+                {
+                    "qualified_name": ta.qualified_name,
+                    "estimated_row_width_bytes": ta.estimated_row_width_bytes,
+                    "recommended_batch_size": ta.recommended_batch_size,
+                    "rationale": ta.rationale,
+                }
+                for ta in advice.per_table.values()
+            ],
+        }
+    finally:
+        src_session.close()
+        src_engine.dispose()
+
+
+def quality_check_record(record: MigrationRecord) -> dict:
+    """Layer 3 quality validation for `record`.
+
+    Two passes, both read-only:
+
+    1. **Pre-copy scan** of the source — for each VARCHAR/CHAR column
+       with a declared length, check whether the actual content is
+       within 10% of (or over) the limit. Catches the Oracle-byte-vs-
+       PG-char-semantics gotcha before it becomes a COPY failure.
+
+    2. **Post-copy compare** — for each migrated table on the target,
+       verify row count, per-column NULL counts, and per-column
+       MIN/MAX agree with the source. Skipped for any table whose
+       target counterpart doesn't exist yet (i.e., the migration
+       hasn't been run).
+
+    Returns a dict suitable for the router to wrap in a Pydantic
+    response. Findings are listed in the order they were produced
+    (table-by-table, scan then compare) so a UI can group them under
+    table headings without re-sorting.
+    """
+    from ..migrate.quality import compare_basic_stats, scan_varchar_lengths
+
+    if not record.source_url or not record.source_schema:
+        raise ValueError("source_url and source_schema are required")
+    if not record.target_url or not record.target_schema:
+        raise ValueError("target_url and target_schema are required")
+
+    src_dialect = Dialect.ORACLE if record.source_url.startswith("oracle") else Dialect.POSTGRES
+    src_engine = create_engine(record.source_url)
+    SrcSession = sessionmaker(bind=src_engine)
+    src_session = SrcSession()
+    dst_engine = create_engine(record.target_url)
+    DstSession = sessionmaker(bind=dst_engine)
+    dst_session = DstSession()
+
+    findings: list[dict] = []
+    try:
+        schema = introspect(src_session, src_dialect, record.source_schema)
+        wanted = _parse_tables(record.tables)
+        if wanted is not None:
+            schema.tables = [t for t in schema.tables if t.name in wanted]
+
+        for src_table in schema.tables:
+            src_qn = src_table.qualified()
+            cols = (schema.column_metadata or {}).get(src_qn, [])
+            if not cols:
+                continue
+
+            # Pre-copy scan against the source.
+            for f in scan_varchar_lengths(src_session, src_dialect, src_qn, cols):
+                findings.append(_finding_to_dict(f))
+
+            # Post-copy compare — only if the target table exists.
+            target_qn = f"{record.target_schema}.{src_table.name}"
+            if not _target_table_exists(dst_session, record.target_schema, src_table.name):
+                continue
+            for f in compare_basic_stats(
+                src_session, src_dialect, src_qn,
+                dst_session, target_qn,
+                cols,
+            ):
+                findings.append(_finding_to_dict(f))
+
+        # Roll up severity for the caller — the UI bannerizes the
+        # whole report based on this single field.
+        if any(f["severity"] == "error" for f in findings):
+            overall = "error"
+        elif any(f["severity"] == "warning" for f in findings):
+            overall = "warning"
+        else:
+            overall = "ok"
+
+        return {
+            "overall_severity": overall,
+            "findings": findings,
+        }
+    finally:
+        src_session.close()
+        src_engine.dispose()
+        dst_session.close()
+        dst_engine.dispose()
+
+
+def _finding_to_dict(f) -> dict:
+    return {
+        "severity": f.severity,
+        "table": f.table,
+        "column": f.column,
+        "check": f.check,
+        "message": f.message,
+    }
+
+
+def _target_table_exists(session, schema: str, table_name: str) -> bool:
+    """Cheap pg_catalog probe so the post-copy compare can no-op for
+    tables not yet migrated. We accept any case-folded match — the
+    introspector preserves Oracle uppercase, so the target table is
+    typically named identically (quoted) and the comparison is exact."""
+    from sqlalchemy import text
+
+    row = session.execute(
+        text(
+            "SELECT 1 FROM pg_tables WHERE schemaname = :s AND tablename = :t"
+        ),
+        {"s": schema, "t": table_name},
+    ).first()
+    return row is not None
+
+
 def _parse_tables(raw: Optional[str]) -> Optional[set[str]]:
     """Decode the JSON `tables` field. None / empty / "null" = all tables."""
     if not raw:

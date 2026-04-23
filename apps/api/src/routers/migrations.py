@@ -38,7 +38,12 @@ from ..auth.roles import require_role
 from ..db import get_db
 from ..models import MigrationCheckpointRecord, MigrationRecord
 from ..services.audit import log_event
-from ..services.migration_runner import dry_run_plan, run_migration
+from ..services.migration_runner import (
+    advise_record,
+    dry_run_plan,
+    quality_check_record,
+    run_migration,
+)
 from ..services.queue import enqueue_migration
 from ..utils.time import utc_now
 
@@ -440,6 +445,112 @@ def preview_plan(
         create_table_ddl=result["create_table_ddl"],
         type_mappings=[PlanTypeMapping(**tm) for tm in result["type_mappings"]],
         deferred_constraints=result["deferred_constraints"],
+    )
+
+
+class TableAdviceItem(BaseModel):
+    qualified_name: str
+    estimated_row_width_bytes: int
+    recommended_batch_size: int
+    rationale: str
+
+
+class AdviceResponse(BaseModel):
+    """Per-table batch_size recommendation. The deterministic baseline
+    runs always; `used_ai=True` means Claude refined the numbers and
+    `notes` carries operator-facing observations (low-cardinality PKs,
+    LOB-dominant tables, FK fan-out, etc.)."""
+
+    used_ai: bool
+    per_table: List[TableAdviceItem]
+    notes: List[str]
+
+
+@router.post("/{migration_id}/advise", response_model=AdviceResponse)
+def advise_plan(
+    migration_id: str,
+    ai: bool = False,
+    db: Session = Depends(get_db),
+    _caller=Depends(require_role("admin", "operator")),
+) -> AdviceResponse:
+    """Recommend a per-table `batch_size` for the migration's source
+    schema. Pass `?ai=true` to enrich the deterministic baseline with a
+    Claude refinement pass (requires `ANTHROPIC_API_KEY`); without it,
+    we return the heuristic-only result instantly with no API cost."""
+    record = _load_or_404(db, migration_id)
+
+    ai_client = None
+    if ai:
+        try:
+            from ..ai.client import AIClient
+
+            ai_client = AIClient.fast(feature="migration_advisor")
+        except RuntimeError as exc:
+            # No API key configured. Surface as 400 so the UI can prompt
+            # the operator instead of silently falling back.
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    try:
+        result = advise_record(record, ai_client=ai_client)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:  # noqa: BLE001 — connect/introspect errors
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"advise failed: {str(exc).split(chr(10))[0][:300]}",
+        )
+
+    return AdviceResponse(
+        used_ai=result["used_ai"],
+        per_table=[TableAdviceItem(**item) for item in result["per_table"]],
+        notes=result["notes"],
+    )
+
+
+class QualityFindingItem(BaseModel):
+    severity: str  # "info" | "warning" | "error"
+    table: str
+    column: Optional[str]
+    check: str
+    message: str
+
+
+class QualityCheckResponse(BaseModel):
+    """Layer 3 quality validation report. `overall_severity` is the
+    rollup the UI uses to colour the report banner; `findings` is the
+    full table-by-table list, ordered for UI grouping."""
+
+    overall_severity: str  # "ok" | "warning" | "error"
+    findings: List[QualityFindingItem]
+
+
+@router.post(
+    "/{migration_id}/quality-check", response_model=QualityCheckResponse
+)
+def quality_check(
+    migration_id: str,
+    db: Session = Depends(get_db),
+    _caller=Depends(require_role("admin", "operator")),
+) -> QualityCheckResponse:
+    """Run Layer 3 quality validation against the source (always) and
+    the target (when the migration has run). Pre-copy: VARCHAR length
+    overflow / near-limit warnings. Post-copy: row count, NULL count,
+    MIN/MAX agreement.
+
+    Read-only. Safe to call before, during, or after a migration run."""
+    record = _load_or_404(db, migration_id)
+    try:
+        result = quality_check_record(record)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:  # noqa: BLE001 — connect/introspect surface
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"quality check failed: {str(exc).split(chr(10))[0][:300]}",
+        )
+    return QualityCheckResponse(
+        overall_severity=result["overall_severity"],
+        findings=[QualityFindingItem(**f) for f in result["findings"]],
     )
 
 

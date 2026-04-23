@@ -252,6 +252,9 @@ class ConstructTag(str, Enum):
     PERCENT_TYPE = "PERCENT_TYPE"  # %TYPE / %ROWTYPE
     ROWNUM = "ROWNUM"
     ROWID = "ROWID"
+    NVL = "NVL"  # NVL/NVL2 — Oracle null-coalescing functions
+    DECODE = "DECODE"  # DECODE — Oracle's positional CASE
+    INTERVAL = "INTERVAL"  # INTERVAL types + arithmetic
 
 
 @dataclass(frozen=True)

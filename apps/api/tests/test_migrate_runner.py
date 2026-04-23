@@ -21,7 +21,7 @@ from src.migrate.ddl import apply_ddl, generate_schema_ddl, map_pg_type
 from src.migrate.introspect import introspect
 from src.migrate.keyset import Dialect
 from src.migrate.planner import LoadGroup, LoadPlan, TableRef
-from src.migrate.runner import Runner, TableSpec, _stream_batches
+from src.migrate.runner import Runner, TableSpec, _materialize_value, _stream_batches
 
 
 # ─── Test rig ────────────────────────────────────────────────────────────────
@@ -471,3 +471,197 @@ def test_runner_applies_row_transform_and_still_verifies(schemas, sessions, monk
         assert tgt_row[1] != src_row[1]               # label was masked
         assert len(tgt_row[1]) == 16                  # at configured length
         assert "@" not in tgt_row[1]                  # not an email anymore
+
+
+# ─── _materialize_value (LOB / lazy-fetch coercion) ──────────────────────────
+#
+# The runner's hot loop calls _materialize_value on every value of every
+# row. Primitive types must short-circuit untouched; anything with a
+# `.read()` method (production case: oracledb.LOB for CLOB/BLOB columns)
+# must be materialized so the bytes flow through psycopg COPY and so
+# verify.py hashes the actual content instead of the object's address.
+
+
+class _FakeLOB:
+    """Minimal stand-in for oracledb.LOB. Has a .read() that returns the
+    materialized payload, exactly like the real one. Tracks call count
+    so we can assert read() runs exactly once per row."""
+
+    def __init__(self, payload):
+        self._payload = payload
+        self.read_count = 0
+
+    def read(self):
+        self.read_count += 1
+        return self._payload
+
+
+class TestMaterializeValue:
+    @pytest.mark.parametrize(
+        "v",
+        [None, "hello", b"\x00\x01", bytearray(b"x"), 42, 3.14, True, False],
+    )
+    def test_primitives_pass_through_unchanged(self, v):
+        # Hot-path values — must NOT touch getattr/read.
+        out = _materialize_value(v)
+        assert out is v or out == v
+
+    def test_lob_str_is_read(self):
+        lob = _FakeLOB("a CLOB body")
+        assert _materialize_value(lob) == "a CLOB body"
+        assert lob.read_count == 1
+
+    def test_lob_bytes_is_read(self):
+        lob = _FakeLOB(b"\x89PNG\r\n")
+        assert _materialize_value(lob) == b"\x89PNG\r\n"
+
+    def test_read_failure_returns_original(self):
+        # If .read() raises, surface the object so the downstream
+        # COPY/hash error message points at the right column rather
+        # than masking the failure with our own.
+        class Broken:
+            def read(self):
+                raise RuntimeError("connection lost mid-read")
+
+        b = Broken()
+        assert _materialize_value(b) is b
+
+    def test_object_without_read_passes_through(self):
+        class Random:
+            pass
+
+        x = Random()
+        assert _materialize_value(x) is x
+
+    def test_string_with_substring_read_is_not_called(self):
+        # str has no .read() method, so even a confusing-looking value
+        # falls through. This pins the short-circuit.
+        s = "Iam.read'y"
+        assert _materialize_value(s) is s
+
+
+# ─── Self-FK NULL-then-UPDATE pass ───────────────────────────────────────────
+#
+# When the operator pre-creates the target with the self-FK installed
+# (e.g. `manager_id REFERENCES employees(id)`), naively COPYing rows
+# in PK order only works when the data is hierarchically ordered.
+# The runner's NULL-then-UPDATE path handles the general case.
+
+
+def test_self_fk_null_then_update_loads_non_hierarchical_data(
+    schemas, sessions, pg_url
+):
+    """A worst-case ordering: child rows appear BEFORE their parents
+    in PK order. Without the NULL-then-UPDATE pass the COPY fails on
+    the FK check; with it, the load lands clean and the FK values
+    show up post-update."""
+    src_schema, dst_schema = schemas
+    src_session, dst_session, pg_conn = sessions
+
+    # Source: 5 employees where every non-root row points UP to a
+    # smaller-id parent — but PK ordering loads them mixed (id=1 root,
+    # id=2 reports to id=4, id=3 reports to id=2, ...). The point is
+    # the keyset walk doesn't load id=4 until after id=3 has been
+    # asked to point at it.
+    with pg_conn.cursor() as cur:
+        cur.execute(
+            f"CREATE TABLE {src_schema}.emp ("
+            f"  id INTEGER PRIMARY KEY,"
+            f"  name TEXT,"
+            f"  manager_id INTEGER"
+            f")"
+        )
+        cur.execute(
+            f"INSERT INTO {src_schema}.emp VALUES "
+            f"  (1, 'Root',  NULL),"
+            f"  (2, 'Mid',   4),"      # depends on a row LATER in PK order
+            f"  (3, 'Leaf',  2),"      # depends on id=2 (same batch)
+            f"  (4, 'Other', 1),"
+            f"  (5, 'Quad',  4)"
+        )
+        # Target: same shape, but with the self-FK INSTALLED. Naive
+        # COPY ordering would fail when the row referencing id=4 is
+        # inserted before id=4 itself.
+        cur.execute(
+            f"CREATE TABLE {dst_schema}.emp ("
+            f"  id INTEGER PRIMARY KEY,"
+            f"  name TEXT,"
+            f"  manager_id INTEGER"
+            f")"
+        )
+        cur.execute(
+            f"ALTER TABLE {dst_schema}.emp "
+            f"ADD CONSTRAINT emp_mgr_fk "
+            f"FOREIGN KEY (manager_id) REFERENCES {dst_schema}.emp(id)"
+        )
+
+    spec = TableSpec(
+        source_table=TableRef(schema=src_schema, name="emp"),
+        target_table=TableRef(schema=dst_schema, name="emp"),
+        columns=["id", "name", "manager_id"],
+        pk_columns=["id"],
+    )
+    plan = LoadPlan(groups=[LoadGroup(tables=[spec.target_table])])
+
+    runner = Runner(
+        source_session=src_session,
+        target_session=dst_session,
+        target_pg_conn=pg_conn,
+        source_dialect=Dialect.POSTGRES,
+        batch_size=10,
+        # Tell the runner: manager_id is a self-FK on this target;
+        # NULL it during COPY and write it back in pass 2.
+        null_then_update_columns={spec.target_table.qualified(): ["manager_id"]},
+    )
+    result = runner.execute(plan, {spec.target_table.qualified(): spec})
+
+    target_result = result.tables[spec.target_table.qualified()]
+    assert target_result.rows_copied == 5
+    # Verification reads the post-update target, which now matches
+    # the source byte-for-byte.
+    assert target_result.verified, target_result.discrepancy
+
+    # And the manager_id values landed correctly — the NULL during
+    # COPY was a transient state, the UPDATE pass fixed it.
+    with pg_conn.cursor() as cur:
+        cur.execute(
+            f"SELECT id, name, manager_id FROM {dst_schema}.emp ORDER BY id"
+        )
+        rows = cur.fetchall()
+    assert rows == [
+        (1, "Root", None),
+        (2, "Mid", 4),
+        (3, "Leaf", 2),
+        (4, "Other", 1),
+        (5, "Quad", 4),
+    ]
+
+
+def test_no_self_fk_columns_means_existing_flow_unchanged(schemas, sessions, pg_url):
+    """The new parameter must default to a no-op so every existing
+    caller keeps working without modification."""
+    src_schema, dst_schema = schemas
+    src_session, dst_session, pg_conn = sessions
+
+    with pg_conn.cursor() as cur:
+        cur.execute(f"CREATE TABLE {src_schema}.t (id INT PRIMARY KEY, val INT)")
+        cur.execute(f"INSERT INTO {src_schema}.t VALUES (1, 10), (2, 20), (3, 30)")
+        cur.execute(f"CREATE TABLE {dst_schema}.t (id INT PRIMARY KEY, val INT)")
+
+    spec = TableSpec(
+        source_table=TableRef(schema=src_schema, name="t"),
+        target_table=TableRef(schema=dst_schema, name="t"),
+        columns=["id", "val"],
+        pk_columns=["id"],
+    )
+    plan = LoadPlan(groups=[LoadGroup(tables=[spec.target_table])])
+    runner = Runner(
+        source_session=src_session,
+        target_session=dst_session,
+        target_pg_conn=pg_conn,
+        source_dialect=Dialect.POSTGRES,
+        batch_size=10,
+        # null_then_update_columns omitted — defaults to {}
+    )
+    result = runner.execute(plan, {spec.target_table.qualified(): spec})
+    assert result.tables[spec.target_table.qualified()].verified

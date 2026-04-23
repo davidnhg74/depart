@@ -19,6 +19,7 @@ from src.config import settings as env_settings
 from src.models import MigrationCdcChange, MigrationRecord
 from src.services.cdc.queue import (
     Change,
+    commit_apply_results,
     enqueue_changes,
     fetch_unapplied,
     mark_applied,
@@ -191,3 +192,104 @@ def test_queue_status_counts(db):
     assert status.applied_count == 2
     assert status.pending_count == 2  # failed + never-attempted
     assert status.failed_count == 1
+
+
+# ─── commit_apply_results — single-commit drain bookkeeping ──────────
+
+
+def _seed_migration_with_scn(db, prior_scn: int | None) -> uuid.UUID:
+    rec = MigrationRecord(
+        id=uuid.uuid4(),
+        name="cdc-commit-test",
+        schema_name="hr",
+        source_url="oracle://...",
+        target_url="postgresql+psycopg://...",
+        source_schema="HR",
+        target_schema="hr",
+        status="pending",
+        last_applied_scn=prior_scn,
+    )
+    db.add(rec)
+    db.commit()
+    return rec.id
+
+
+class TestCommitApplyResults:
+    def test_applies_failures_and_advances_scn_in_one_commit(self, db):
+        # Three changes, two succeed, one fails. After commit_apply_results:
+        #  - successes have applied_at set
+        #  - failure has apply_error set, applied_at still NULL
+        #  - migration's last_applied_scn advances to the max success SCN
+        mid = _seed_migration_with_scn(db, prior_scn=None)
+        enqueue_changes(
+            db, mid, [_mk_change(10), _mk_change(20), _mk_change(30)]
+        )
+        rows = fetch_unapplied(db, mid)
+
+        commit_apply_results(
+            db,
+            migration_id=mid,
+            applied_change_ids=[rows[0].id, rows[2].id],
+            failed=[(rows[1].id, "transient deadlock")],
+            new_max_applied_scn=30,
+        )
+
+        rec = db.get(MigrationRecord, mid)
+        db.refresh(rec)
+        assert rec.last_applied_scn == 30
+
+        st = queue_status(db, mid)
+        assert st.applied_count == 2
+        assert st.failed_count == 1
+        assert st.pending_count == 1  # the failure stays in the queue
+
+    def test_watermark_only_advances_forward(self, db):
+        # If a later drain reports a smaller new_max_applied_scn (e.g.,
+        # only retried older failures), the watermark must NOT regress.
+        mid = _seed_migration_with_scn(db, prior_scn=100)
+        enqueue_changes(db, mid, [_mk_change(50)])
+        row = fetch_unapplied(db, mid)[0]
+
+        commit_apply_results(
+            db,
+            migration_id=mid,
+            applied_change_ids=[row.id],
+            failed=[],
+            new_max_applied_scn=50,  # below the prior 100
+        )
+
+        rec = db.get(MigrationRecord, mid)
+        db.refresh(rec)
+        assert rec.last_applied_scn == 100  # unchanged
+
+    def test_no_max_scn_leaves_watermark_alone(self, db):
+        # All-failures drain — pass new_max_applied_scn=None.
+        mid = _seed_migration_with_scn(db, prior_scn=42)
+        enqueue_changes(db, mid, [_mk_change(50)])
+        row = fetch_unapplied(db, mid)[0]
+
+        commit_apply_results(
+            db,
+            migration_id=mid,
+            applied_change_ids=[],
+            failed=[(row.id, "perma-broken")],
+            new_max_applied_scn=None,
+        )
+
+        rec = db.get(MigrationRecord, mid)
+        db.refresh(rec)
+        assert rec.last_applied_scn == 42
+
+    def test_empty_inputs_still_safe(self, db):
+        # Nothing to do — should not crash and should not touch the
+        # watermark.
+        mid = _seed_migration_with_scn(db, prior_scn=10)
+        commit_apply_results(
+            db,
+            migration_id=mid,
+            applied_change_ids=[],
+            failed=[],
+            new_max_applied_scn=None,
+        )
+        rec = db.get(MigrationRecord, mid)
+        assert rec.last_applied_scn == 10

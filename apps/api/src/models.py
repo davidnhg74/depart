@@ -501,6 +501,15 @@ class InstanceSettings(Base):
     # attacker with DB read can't lift the license onto another install.
     # NULL = Community tier.
     license_jwt = Column(EncryptedText, nullable=True)
+    # White-label branding. All NULL on a fresh install — the service
+    # layer fills each field with a sane Hafen default at read time.
+    # Writes are gated on the license carrying the `white_label` feature
+    # so Community / non-WL tiers can read defaults but not change them.
+    brand_company_name = Column(String(255), nullable=True)
+    brand_product_name = Column(String(255), nullable=True)
+    brand_logo_url = Column(String(2000), nullable=True)
+    brand_primary_color = Column(String(7), nullable=True)  # "#RRGGBB"
+    brand_support_email = Column(String(255), nullable=True)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
 
 

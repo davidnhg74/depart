@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuthStore } from '@/app/store/authStore';
+import { useBrandingStore } from '@/app/store/brandingStore';
 import { logout, logoutLocal } from '@/app/lib/api';
 import { cloudRoutesEnabled } from '@/app/lib/cloudRoutes';
 
@@ -12,6 +13,7 @@ export default function Navigation() {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const router = useRouter();
   const { user, isAuthenticated } = useAuthStore();
+  const branding = useBrandingStore((s) => s.branding);
 
   const cloudEnabled = cloudRoutesEnabled();
 
@@ -105,8 +107,20 @@ export default function Navigation() {
     <nav className="bg-white border-b border-gray-200 sticky top-0 z-50">
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16">
-          <Link href="/" className="text-2xl font-bold text-purple-600">
-            Hafen
+          <Link
+            href="/"
+            className="text-2xl font-bold flex items-center gap-2"
+            style={{ color: branding.primary_color }}
+          >
+            {branding.logo_url && (
+              // eslint-disable-next-line @next/next/no-img-element -- operator-supplied URL, not a Next-Image candidate
+              <img
+                src={branding.logo_url}
+                alt={`${branding.product_name} logo`}
+                className="h-8 w-8 object-contain"
+              />
+            )}
+            {branding.product_name}
           </Link>
           <div className="flex gap-8 items-center">
             {links.map((link) => (

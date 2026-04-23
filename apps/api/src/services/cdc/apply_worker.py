@@ -118,6 +118,7 @@ def drain_migration(
         )
 
     applied_ids: list[int] = []
+    failed_results: list[tuple[int, str]] = []
     for change, res in zip(all_changes, results):
         if res.ok:
             applied_ids.append(res.change_id)
@@ -129,22 +130,24 @@ def drain_migration(
                 new_max_applied_scn = change.scn
         else:
             total_failed += 1
-            queue_module.mark_failed(
-                db, res.change_id, res.error or "unknown apply error"
+            failed_results.append(
+                (res.change_id, res.error or "unknown apply error")
             )
 
-    if applied_ids:
-        queue_module.mark_applied(db, applied_ids)
+    # Single transaction for all bookkeeping: applied stamps, failure
+    # records, and watermark advance. Apply itself is already
+    # idempotent, but multi-commit bookkeeping previously left a
+    # window where a crash could leave `last_applied_scn` lagging
+    # behind reality. One commit removes that window.
+    queue_module.commit_apply_results(
+        db,
+        migration_id=migration_id,
+        applied_change_ids=applied_ids,
+        failed=failed_results,
+        new_max_applied_scn=new_max_applied_scn,
+    )
 
     total_drained = len(all_changes)
-
-    # Advance the migration's watermark if we applied anything past
-    # the prior high-water mark.
-    if new_max_applied_scn is not None:
-        prior = rec.last_applied_scn or -1
-        if new_max_applied_scn > prior:
-            rec.last_applied_scn = new_max_applied_scn
-            db.commit()
 
     return DrainResult(
         drained_count=total_drained,

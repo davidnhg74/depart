@@ -245,7 +245,7 @@ if you want a clean slate.
 
 ## Support
 
-Enterprise license holders: email <support@hafen.io> with the project
+Enterprise license holders: email <support@hafen.ai> with the project
 and license subject shown at **Settings → Instance settings**. We
 respond within SLA even for air-gapped deployments (send us the
 runbook PDF or logs out-of-band).

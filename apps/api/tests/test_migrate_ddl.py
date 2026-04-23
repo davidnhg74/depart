@@ -81,6 +81,20 @@ class TestOracleTypeMapping:
         with pytest.raises(ValueError, match="no Postgres mapping"):
             map_oracle_type(ColumnMeta("c", "SDO_TOPO_GEOMETRY"))
 
+    def test_bfile_maps_to_text_with_warning(self, caplog):
+        # BFILE used to raise ValueError mid-migration. Now it lands as
+        # TEXT (the locator string) and surfaces a warning instead, so
+        # the migration finishes and the operator sees the issue in the
+        # log instead of a stack trace.
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="src.migrate.ddl"):
+            assert map_oracle_type(ColumnMeta("doc_path", "BFILE")) == "TEXT"
+        assert any(
+            "BFILE" in rec.message and "doc_path" in rec.message
+            for rec in caplog.records
+        )
+
 
 # ─── Postgres → Postgres (identity load) ─────────────────────────────────────
 

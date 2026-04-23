@@ -40,10 +40,14 @@ Type mapping notes (mostly Oracle idiosyncrasies):
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence
 
 from .planner import TableRef
+
+
+logger = logging.getLogger(__name__)
 
 
 # ─── Metadata shape ──────────────────────────────────────────────────────────
@@ -87,6 +91,25 @@ def map_oracle_type(col: ColumnMeta) -> str:
 
     if t == "RAW":
         return "BYTEA"
+
+    if t == "BFILE":
+        # BFILE is a *pointer* to an external file on the Oracle server's
+        # filesystem, not the file's contents. Postgres has no equivalent;
+        # the pragmatic choice is to land the locator string as TEXT so
+        # the migration doesn't abort, then leave it to the operator to
+        # rehome the underlying files (DBMS_LOB.LOADCLOBFROMFILE-style
+        # extraction during a follow-up pass).
+        #
+        # We deliberately don't raise here — crashing during DDL after
+        # the operator already kicked off the migration is the worst-
+        # case UX. The warning shows up in the migration log instead.
+        logger.warning(
+            "BFILE column %r mapped to TEXT — the column will hold Oracle "
+            "file *locators*, not file contents. Plan a follow-up pass to "
+            "extract the underlying files if you need the data itself.",
+            col.name,
+        )
+        return "TEXT"
 
     if t == "DATE":
         # Oracle DATE carries time-of-day; plain PG DATE would truncate.

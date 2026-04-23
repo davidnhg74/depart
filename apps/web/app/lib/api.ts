@@ -121,6 +121,17 @@ export async function verifyEmail(token: string): Promise<void> {
   await api.post('/api/v4/auth/verify-email', { token });
 }
 
+// ─── Branding ────────────────────────────────────────────────────────
+
+import type { Branding } from '@/app/store/brandingStore';
+
+export async function fetchBranding(): Promise<Branding> {
+  // Public endpoint — no auth header needed. Bare axios so we don't
+  // accidentally pick up an in-flight 401 from a stale auth token.
+  const { data } = await axios.get<Branding>(`${apiBaseUrl()}/api/v1/branding`);
+  return data;
+}
+
 export async function fetchCurrentUser(): Promise<User | null> {
   try {
     const { data } = await api.get<User>('/api/v4/auth/me');

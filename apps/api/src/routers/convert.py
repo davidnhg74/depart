@@ -31,6 +31,7 @@ from ..license.dependencies import require_feature
 from ..license.verifier import LicenseStatus
 from ..services.audit import log_event
 from ..services.settings_service import get_effective_anthropic_key
+from ..validators.plpgsql_validator import ConversionValidator
 
 
 logger = logging.getLogger(__name__)
@@ -44,7 +45,13 @@ router = APIRouter(prefix="/api/v1/convert", tags=["convert"])
 
 class ConversionExample(BaseModel):
     """One side-by-side example. The frontend renders `oracle` and
-    `postgres` as two code blocks and `reasoning` as narrative below."""
+    `postgres` as two code blocks and `reasoning` as narrative below.
+
+    `validation_errors` and `validation_warnings` are populated only by
+    the live AI path — the canonical hand-curated examples are
+    pre-validated and ship empty lists. When `validation_errors` is
+    non-empty the UI should render a "do not trust" banner; warnings
+    are advisory."""
 
     tag: str
     title: str
@@ -52,6 +59,8 @@ class ConversionExample(BaseModel):
     postgres: str
     reasoning: str
     confidence: str  # "high" | "medium" | "needs-review"
+    validation_errors: list[str] = []
+    validation_warnings: list[str] = []
 
 
 # ─── Example content ─────────────────────────────────────────────────────────
@@ -380,6 +389,111 @@ COPY (SELECT employee_id, last_name FROM employees)
 )
 
 
+_NVL = _Ex(
+    title="NVL / NVL2 → COALESCE / CASE",
+    oracle="""SELECT employee_id,
+       NVL(commission_pct, 0) AS commission_pct,
+       NVL2(manager_id, 'managed', 'unmanaged') AS reports_to_status
+  FROM employees;""",
+    postgres="""SELECT employee_id,
+       COALESCE(commission_pct, 0) AS commission_pct,
+       CASE WHEN manager_id IS NOT NULL THEN 'managed'
+            ELSE 'unmanaged'
+       END AS reports_to_status
+  FROM employees;""",
+    reasoning=(
+        "NVL is just two-argument COALESCE — direct swap, same NULL "
+        "semantics. NVL2(expr, a, b) doesn't have a single-function "
+        "equivalent, but `CASE WHEN expr IS NOT NULL THEN a ELSE b END` "
+        "is the canonical translation. Watch for type coercion: NVL "
+        "implicitly converts both args to the type of the first; "
+        "COALESCE returns the first non-NULL with no implicit conversion, "
+        "so explicitly cast if the original relied on Oracle's coercion."
+    ),
+)
+
+
+_DECODE = _Ex(
+    title="DECODE → CASE expression",
+    oracle="""SELECT employee_id,
+       DECODE(department_id,
+              10, 'Admin',
+              20, 'Engineering',
+              30, 'Sales',
+                  'Other'
+       ) AS dept_label
+  FROM employees;""",
+    postgres="""SELECT employee_id,
+       CASE department_id
+            WHEN 10 THEN 'Admin'
+            WHEN 20 THEN 'Engineering'
+            WHEN 30 THEN 'Sales'
+            ELSE 'Other'
+       END AS dept_label
+  FROM employees;""",
+    reasoning=(
+        "DECODE(expr, k1, v1, k2, v2, ..., default) is positional — "
+        "every odd-indexed arg after `expr` is a key, every even-indexed "
+        "is its value, and a final unpaired arg is the default. Translate "
+        "directly to a `CASE expr WHEN k THEN v ... ELSE default END`. "
+        "One subtle difference: DECODE treats two NULLs as equal, while "
+        "ANSI CASE does NOT — `CASE NULL WHEN NULL THEN ...` never "
+        "matches. If the original relied on NULL-equals-NULL semantics, "
+        "use `CASE WHEN expr IS NULL OR expr = ... THEN ...` instead."
+    ),
+)
+
+
+_INTERVAL = _Ex(
+    title="INTERVAL types + arithmetic → PG INTERVAL (mostly drop-in)",
+    oracle="""-- Oracle INTERVAL columns and arithmetic
+CREATE TABLE leases (
+    lease_id    NUMBER(10) PRIMARY KEY,
+    start_date  DATE,
+    duration    INTERVAL YEAR(2) TO MONTH,
+    notice      INTERVAL DAY(3) TO SECOND
+);
+
+SELECT lease_id, start_date + duration AS end_date,
+       SYSDATE - notice AS notice_starts
+  FROM leases;
+
+INSERT INTO leases VALUES (
+    1, DATE '2026-01-01',
+    INTERVAL '2-6' YEAR TO MONTH,
+    INTERVAL '30 12:00:00.0' DAY TO SECOND
+);""",
+    postgres="""CREATE TABLE leases (
+    lease_id    BIGINT PRIMARY KEY,
+    start_date  TIMESTAMP,
+    duration    INTERVAL,
+    notice      INTERVAL
+);
+
+SELECT lease_id, start_date + duration AS end_date,
+       NOW() - notice AS notice_starts
+  FROM leases;
+
+INSERT INTO leases VALUES (
+    1, TIMESTAMP '2026-01-01 00:00:00',
+    INTERVAL '2 years 6 months',
+    INTERVAL '30 days 12 hours'
+);""",
+    reasoning=(
+        "Postgres has a single INTERVAL type that stores months + days + "
+        "microseconds; Oracle splits its INTERVAL into YEAR-TO-MONTH and "
+        "DAY-TO-SECOND variants with explicit precision. Drop the "
+        "subtype qualifier on the column declaration — PG INTERVAL "
+        "covers both ranges. Literal syntax differs: Oracle uses ANSI "
+        "interval literals (`INTERVAL '2-6' YEAR TO MONTH`); Postgres "
+        "accepts a casual phrase form (`INTERVAL '2 years 6 months'`) "
+        "that's easier to read and write. Arithmetic between DATE/"
+        "TIMESTAMP and INTERVAL works identically. SYSDATE → NOW() "
+        "(or CURRENT_TIMESTAMP) per the rest of this conversion guide."
+    ),
+)
+
+
 _EXAMPLES: Dict[ConstructTag, _Ex] = {
     ConstructTag.MERGE: _MERGE,
     ConstructTag.CONNECT_BY: _CONNECT_BY,
@@ -392,6 +506,9 @@ _EXAMPLES: Dict[ConstructTag, _Ex] = {
     ConstructTag.DBLINK: _DBLINK,
     ConstructTag.BULK_COLLECT: _BULK_COLLECT,
     ConstructTag.UTL_FILE: _UTL_FILE,
+    ConstructTag.NVL: _NVL,
+    ConstructTag.DECODE: _DECODE,
+    ConstructTag.INTERVAL: _INTERVAL,
 }
 
 
@@ -553,13 +670,34 @@ def convert_live(
 
     # `raw` is already a dict from complete_json; fall back gracefully
     # if Claude skipped a field.
+    converted = str(raw.get("postgres") or "")
+    confidence = _normalize_confidence(raw.get("confidence"))
+
+    # Gate Claude's output through the syntax validator before handing
+    # it back to the operator. Validation errors are unrecoverable
+    # (unbalanced delimiters, missing LANGUAGE clause, hallucinated
+    # Oracle remnants in the "converted" output) — when any are
+    # present we force-downgrade confidence to needs-review so the UI
+    # bannerizes the result and the operator doesn't paste it
+    # unchanged into a production schema. Validation warnings (e.g.,
+    # DATE without timezone hint) ride along but don't change confidence.
+    validation = ConversionValidator().validate_conversion(
+        original=body.snippet,
+        converted=converted,
+        construct_type=parsed.value,
+    )
+    if validation.errors:
+        confidence = "needs-review"
+
     return ConversionExample(
         tag=parsed.value,
         title=(anchor.title if anchor else f"{parsed.value} → Postgres"),
         oracle=str(raw.get("oracle") or body.snippet),
-        postgres=str(raw.get("postgres") or ""),
+        postgres=converted,
         reasoning=str(raw.get("reasoning") or ""),
-        confidence=_normalize_confidence(raw.get("confidence")),
+        confidence=confidence,
+        validation_errors=list(validation.errors),
+        validation_warnings=list(validation.warnings),
     )
 
 

@@ -78,6 +78,39 @@ class IntrospectedSchema:
             )
         return out
 
+    def nullable_pk_columns(self) -> dict[str, list[str]]:
+        """Return tables whose primary-key columns include any nullable
+        column, mapped to the offending column names.
+
+        Keyset pagination cannot resume from a NULL value (row-value
+        comparison treats `(NULL, …) > (…)` as unknown, halting the
+        walk silently mid-table). The runner enforces this at batch
+        time, but we surface it pre-flight so the operator hears about
+        the problem during planning rather than after rows go missing.
+
+        Postgres won't actually let a PRIMARY KEY column be nullable;
+        Oracle is stricter for true PRIMARY KEY constraints too. The
+        case this catches is when introspection's `primary_keys` map
+        was populated from a unique index over nullable columns — rare
+        but real on legacy schemas. An empty return means every PK is
+        safe."""
+        meta = self.column_metadata or {}
+        offenders: dict[str, list[str]] = {}
+        for table in self.tables:
+            qn = table.qualified()
+            pk = self.primary_keys.get(qn) or []
+            if not pk:
+                continue
+            cols_by_name = {c.name: c for c in meta.get(qn, [])}
+            bad = [
+                col_name
+                for col_name in pk
+                if col_name in cols_by_name and cols_by_name[col_name].nullable
+            ]
+            if bad:
+                offenders[qn] = bad
+        return offenders
+
 
 # ─── Top-level entry point ───────────────────────────────────────────────────
 

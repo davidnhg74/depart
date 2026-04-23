@@ -18,8 +18,10 @@ the hashes diverge for innocent reasons.
 
 from __future__ import annotations
 
+import datetime as _dt
 import hashlib
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Iterable, List, Sequence
 
 
@@ -29,22 +31,106 @@ from typing import Iterable, List, Sequence
 def hash_row(values: Sequence) -> bytes:
     """SHA-256 over a canonical serialization of the row.
 
-    Canonical means stable across runs and dialects:
-      • each value rendered with `repr()` plus its type tag (so `1` and
-        `'1'` differ);
-      • values joined by NUL (a byte that can't appear in repr output);
-      • prefixed with the column count to defeat tuple-vs-tuple-with-
-        trailing-NULL ambiguity.
+    The canonicalization deliberately **buckets** Python types so that
+    cross-driver migrations agree on the hash. The motivating case:
+    oracledb returns NUMBER as `int`, psycopg returns NUMERIC as
+    `Decimal`. Same logical value, but `type(v).__name__` and `repr(v)`
+    differ — so a naive type-name-plus-repr scheme reports a false
+    verification failure for every row of every Oracle→PG migration.
 
-    Yes, repr() is Python-specific. That's fine — both sides of the
-    verifier run in the same Python process. The day this becomes a
-    cross-runtime check, swap to a binary canonical-form like CBOR.
+    The bucket prefixes preserve the older invariant that values of
+    *different logical kinds* still hash differently (e.g. the integer
+    `1` and the string ``"1"`` must not collide). What changes is that
+    values of the *same* logical kind now hash the same regardless of
+    which Python type the driver chose to materialize them as.
+
+    Canonical forms:
+      • ``None``        → ``b"NULL"``
+      • ``bool``        → ``b"B:T"`` / ``b"B:F"``
+      • numeric (int / Decimal / float) → ``b"N:<canonical>"`` where
+        the canonical is the value rendered as a fixed-point decimal
+        string with trailing zeros stripped (so ``10``, ``Decimal(10)``,
+        ``Decimal("10.0")``, and ``10.0`` all share one hash)
+      • bytes-like     → ``b"X:<lowercase hex>"``
+      • ``str``         → ``b"S:" + repr(v).encode()`` — repr() escapes
+        embedded NULs so the NUL field separator below stays unambiguous
+      • datetime types → ``b"DT:..."`` / ``b"D:..."`` / ``b"T:..."`` via
+        isoformat (tz-aware values stay distinct from naive ones)
+      • anything else  → ``b"R:<typename>:<repr>"`` — falls back to the
+        legacy per-type-name repr, since we can't safely canonicalize
+        what we don't recognize
+
+    The row is prefixed with the column count to defeat the ambiguity
+    between, say, ``(None,)`` and ``(None, None)`` collapsing to the
+    same byte stream.
+
+    LOB note: oracledb returns CLOB/BLOB as ``oracledb.LOB`` objects
+    that need ``.read()`` to materialize. They currently fall into the
+    ``R:`` fallback — which produces a fresh address every read —
+    so verification will *not* match for tables with LOB columns.
+    Fix is to materialize LOBs at row-read time in the runner; tracked
+    separately.
     """
     parts: List[bytes] = [str(len(values)).encode()]
     for v in values:
-        parts.append(type(v).__name__.encode())
-        parts.append(repr(v).encode())
+        parts.append(_canonical(v))
     return hashlib.sha256(b"\x00".join(parts)).digest()
+
+
+def _canonical(v) -> bytes:
+    """Render a single column value as its canonical hash input. The
+    type checks are ordered so that subclasses match their most
+    specific bucket first — `bool` is checked before `int` because
+    ``isinstance(True, int)`` is True and we want True/1 to differ."""
+    if v is None:
+        return b"NULL"
+    if isinstance(v, bool):
+        return b"B:T" if v else b"B:F"
+    if isinstance(v, (int, Decimal, float)):
+        return b"N:" + _canonical_numeric(v).encode()
+    if isinstance(v, (bytes, bytearray, memoryview)):
+        return b"X:" + bytes(v).hex().encode()
+    if isinstance(v, str):
+        # repr() preserves the embedded-NUL safety the original code
+        # relied on. Bare UTF-8 would collide on `"a\x00b"` vs the
+        # NUL field separator we use below.
+        return b"S:" + repr(v).encode()
+    # datetime is a subclass of date — check the more-specific one
+    # first, otherwise both naive datetimes land in the date bucket.
+    if isinstance(v, _dt.datetime):
+        return b"DT:" + v.isoformat().encode()
+    if isinstance(v, _dt.date):
+        return b"D:" + v.isoformat().encode()
+    if isinstance(v, _dt.time):
+        return b"T:" + v.isoformat().encode()
+    # Unknown type — fall back to the legacy per-type repr. Anything
+    # routed here will hash differently between drivers if the drivers
+    # return different Python classes for the same column. That's a
+    # signal the caller needs a coercer at the read layer.
+    return b"R:" + type(v).__name__.encode() + b":" + repr(v).encode()
+
+
+def _canonical_numeric(v) -> str:
+    """Reduce int / Decimal / float to a single canonical decimal string.
+
+    `Decimal.normalize()` strips trailing zeros but renders some values
+    in exponent form (`Decimal('10').normalize() == Decimal('1E+1')`).
+    We re-render with `format(_, 'f')` so the canonical form is always
+    plain fixed-point. Zero is special-cased because normalize() of a
+    high-exponent zero still keeps the exponent.
+    """
+    if isinstance(v, float):
+        # `Decimal(float)` exposes the binary representation noise
+        # (Decimal(0.1) == 0.1000000000000000055...). Going through str()
+        # gives Decimal('0.1') — what the user actually wrote.
+        d = Decimal(str(v))
+    elif isinstance(v, Decimal):
+        d = v
+    else:  # int (and bool, but bool was filtered out above)
+        d = Decimal(v)
+    if d == 0:
+        return "0"
+    return format(d.normalize(), "f")
 
 
 def hash_batch(rows: Iterable[Sequence]) -> bytes:

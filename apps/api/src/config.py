@@ -67,7 +67,7 @@ class Settings(BaseSettings):
 
     # Email (Resend)
     resend_api_key: str = os.getenv("RESEND_API_KEY", "")
-    support_email: str = os.getenv("SUPPORT_EMAIL", "support@hafen.io")
+    support_email: str = os.getenv("SUPPORT_EMAIL", "support@hafen.ai")
 
 
 settings = Settings()

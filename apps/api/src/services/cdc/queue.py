@@ -166,6 +166,66 @@ def mark_failed(
     db.commit()
 
 
+def commit_apply_results(
+    db: Session,
+    *,
+    migration_id: uuid.UUID,
+    applied_change_ids: Iterable[int],
+    failed: Iterable[tuple[int, str]],
+    new_max_applied_scn: int | None,
+    applied_at: datetime | None = None,
+) -> None:
+    """Persist the outcome of one drain pass in a single transaction.
+
+    Replaces a sequence of `mark_applied` + N×`mark_failed` +
+    SCN-advance commits with one. Apply itself is already idempotent,
+    so a worker crash mid-drain doesn't corrupt the target — but
+    splitting the bookkeeping across multiple commits leaves a window
+    where the queue says some changes are applied and others aren't,
+    and the migration's `last_applied_scn` lags behind reality. One
+    commit closes that window.
+
+    The `MigrationRecord.last_applied_scn` watermark only advances
+    when `new_max_applied_scn` strictly exceeds the prior value. Pass
+    `None` (no successful applies in this drain) to leave it alone.
+    """
+    from ...models import MigrationRecord
+    from ...utils.time import utc_now
+
+    applied_ids = list(applied_change_ids)
+    failed_list = list(failed)
+
+    if applied_ids:
+        stamp = applied_at or utc_now()
+        (
+            db.query(MigrationCdcChange)
+            .filter(MigrationCdcChange.id.in_(applied_ids))
+            .update(
+                {"applied_at": stamp, "apply_error": None},
+                synchronize_session=False,
+            )
+        )
+
+    for change_id, error in failed_list:
+        (
+            db.query(MigrationCdcChange)
+            .filter(MigrationCdcChange.id == change_id)
+            .update(
+                {"apply_error": error[:4000]},
+                synchronize_session=False,
+            )
+        )
+
+    if new_max_applied_scn is not None:
+        rec = db.get(MigrationRecord, migration_id)
+        if rec is not None:
+            prior = rec.last_applied_scn or -1
+            if new_max_applied_scn > prior:
+                rec.last_applied_scn = new_max_applied_scn
+
+    db.commit()
+
+
 # ─── Status counts ───────────────────────────────────────────────────
 
 

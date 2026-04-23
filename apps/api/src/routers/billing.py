@@ -123,7 +123,7 @@ async def create_checkout(
     if request.plan == "enterprise":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Enterprise plan requires contacting sales. Email support@hafen.io",
+            detail="Enterprise plan requires contacting sales. Email support@hafen.ai",
         )
 
     # Build success/cancel URLs

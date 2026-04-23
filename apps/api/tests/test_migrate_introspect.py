@@ -214,3 +214,68 @@ def test_build_specs_rewrites_target_schema(session, schema, pg_url):
     assert spec.target_table.schema == "public"
     assert spec.columns == ["id", "label"]
     assert spec.pk_columns == ["id"]
+
+
+# ─── Nullable-PK detection ───────────────────────────────────────────────────
+#
+# Pure unit tests — hand-construct an IntrospectedSchema so we can
+# represent the rare "PK column is nullable" state without actually
+# creating one in Postgres (which won't let us).
+
+
+from src.migrate.ddl import ColumnMeta
+from src.migrate.introspect import IntrospectedSchema
+
+
+def _schema_with(table_name: str, cols: list[ColumnMeta], pk: list[str]) -> IntrospectedSchema:
+    qn = f"public.{table_name}"
+    return IntrospectedSchema(
+        dialect=Dialect.POSTGRES,
+        schema="public",
+        tables=[TableRef(schema="public", name=table_name)],
+        columns={qn: [c.name for c in cols]},
+        primary_keys={qn: pk},
+        foreign_keys=[],
+        column_metadata={qn: cols},
+    )
+
+
+def test_nullable_pk_columns_empty_for_safe_schema():
+    s = _schema_with(
+        "ok",
+        [ColumnMeta(name="id", data_type="INTEGER", nullable=False)],
+        pk=["id"],
+    )
+    assert s.nullable_pk_columns() == {}
+
+
+def test_nullable_pk_columns_flags_offender():
+    # Composite "PK" where the second column is nullable — the case
+    # that breaks keyset paging.
+    s = _schema_with(
+        "weak",
+        [
+            ColumnMeta(name="a", data_type="INTEGER", nullable=False),
+            ColumnMeta(name="b", data_type="INTEGER", nullable=True),
+            ColumnMeta(name="c", data_type="TEXT", nullable=True),
+        ],
+        pk=["a", "b"],
+    )
+    assert s.nullable_pk_columns() == {"public.weak": ["b"]}
+
+
+def test_nullable_pk_columns_skips_tables_without_metadata():
+    # If a hand-built schema didn't populate column_metadata for a
+    # table, we don't have nullability info — treat as unknown rather
+    # than crash. The runtime guard in keyset.build_next_page is the
+    # backstop.
+    s = IntrospectedSchema(
+        dialect=Dialect.POSTGRES,
+        schema="public",
+        tables=[TableRef(schema="public", name="bare")],
+        columns={"public.bare": ["id"]},
+        primary_keys={"public.bare": ["id"]},
+        foreign_keys=[],
+        column_metadata={},
+    )
+    assert s.nullable_pk_columns() == {}

@@ -105,6 +105,32 @@ class TestNextPage:
                 batch_size=10,
             )
 
+    def test_null_in_single_pk_refused(self):
+        # Without this guard, the WHERE clause would be `(pk) > (NULL)`,
+        # which evaluates to NULL and silently halts the walk mid-table.
+        with pytest.raises(ValueError, match="NULL primary-key value"):
+            build_next_page(
+                dialect=Dialect.POSTGRES,
+                table="t",
+                columns=["id"],
+                pk_columns=["id"],
+                last_pk=[None],
+                batch_size=10,
+            )
+
+    def test_null_in_composite_pk_refused_with_column_name(self):
+        with pytest.raises(ValueError) as exc:
+            build_next_page(
+                dialect=Dialect.POSTGRES,
+                table="t",
+                columns=["a", "b", "c"],
+                pk_columns=["a", "b"],
+                last_pk=[1, None],
+                batch_size=10,
+            )
+        # Operator needs to know which column is the offender.
+        assert "'b'" in str(exc.value) or "b" in str(exc.value)
+
 
 # ─── Identifier quoting ──────────────────────────────────────────────────────
 

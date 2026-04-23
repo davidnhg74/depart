@@ -150,8 +150,8 @@ export default function TermsPage() {
             <h2 className="text-2xl font-bold text-gray-900 mb-4">13. Contact</h2>
             <p>
               For questions about these terms, contact us at{' '}
-              <a href="mailto:legal@hafen.io" className="text-purple-600 hover:text-purple-700">
-                legal@hafen.io
+              <a href="mailto:legal@hafen.ai" className="text-purple-600 hover:text-purple-700">
+                legal@hafen.ai
               </a>
             </p>
           </section>

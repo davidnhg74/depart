@@ -42,6 +42,7 @@ from .routers import (
     auth_local,
     account,
     billing,
+    branding as branding_router,
     cdc as cdc_router,
     cloud_analyze,
     convert,
@@ -226,6 +227,7 @@ app.include_router(assess.router)
 app.include_router(convert.router)
 app.include_router(settings_router.router)
 app.include_router(license_router.router)
+app.include_router(branding_router.router)
 app.include_router(migrations_router.router)
 app.include_router(audit_router.router)
 

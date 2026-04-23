@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import hashlib
+from decimal import Decimal
 
 import pytest
 
@@ -34,6 +36,63 @@ class TestHashRow:
 
     def test_order_matters(self):
         assert hash_row((1, 2)) != hash_row((2, 1))
+
+    # ── Cross-driver canonicalization ──────────────────────────────────
+    #
+    # The motivating bug: oracledb returns NUMBER as `int`, psycopg
+    # returns NUMERIC as `Decimal`. Same value, different Python type.
+    # Without canonicalization, every Oracle→PG migration reports a
+    # false verification failure. These tests pin the new behavior.
+
+    def test_int_and_decimal_hash_equal(self):
+        # The Oracle→PG case: NUMBER→int vs NUMERIC→Decimal.
+        assert hash_row((10,)) == hash_row((Decimal(10),))
+        assert hash_row((10, "x")) == hash_row((Decimal(10), "x"))
+
+    def test_decimal_trailing_zeros_collapse(self):
+        # NUMBER(8,2) value 10 might come back as Decimal('10') or
+        # Decimal('10.00') depending on driver/column metadata. Same
+        # value either way.
+        assert hash_row((Decimal("10"),)) == hash_row((Decimal("10.00"),))
+        assert hash_row((Decimal("10.50"),)) == hash_row((Decimal("10.5"),))
+
+    def test_float_canonical_via_string_repr(self):
+        # Decimal(float) would expose binary-rep noise; we route
+        # floats through str() first so 0.1 stays 0.1 in the hash.
+        assert hash_row((0.1,)) == hash_row((Decimal("0.1"),))
+
+    def test_zero_is_zero_regardless_of_form(self):
+        assert hash_row((0,)) == hash_row((Decimal(0),))
+        assert hash_row((0,)) == hash_row((Decimal("0.0"),))
+        assert hash_row((0,)) == hash_row((Decimal("0E+5"),))
+
+    def test_bool_distinct_from_int(self):
+        # Python's bool is an int subclass — `True == 1`. We
+        # deliberately keep them in different buckets so a
+        # BOOLEAN(true) doesn't collide with a NUMBER(1).
+        assert hash_row((True,)) != hash_row((1,))
+        assert hash_row((False,)) != hash_row((0,))
+
+    def test_bytes_variants_hash_equal(self):
+        # bytes / bytearray / memoryview should all produce the same
+        # hash — drivers pick whichever they prefer for BYTEA / RAW.
+        b = b"\x00\x01\x02"
+        assert hash_row((b,)) == hash_row((bytearray(b),))
+        assert hash_row((b,)) == hash_row((memoryview(b),))
+
+    def test_naive_vs_aware_datetime_distinguished(self):
+        # Stored timezone matters — a naive timestamp and a UTC
+        # timestamp with the same wall-clock are NOT the same value.
+        naive = dt.datetime(2026, 4, 23, 12, 0, 0)
+        aware = dt.datetime(2026, 4, 23, 12, 0, 0, tzinfo=dt.timezone.utc)
+        assert hash_row((naive,)) != hash_row((aware,))
+
+    def test_date_vs_datetime_distinguished(self):
+        # `datetime.date(...)` and `datetime.datetime(...)` represent
+        # different things even when the calendar day matches.
+        d = dt.date(2026, 4, 23)
+        dtm = dt.datetime(2026, 4, 23, 0, 0, 0)
+        assert hash_row((d,)) != hash_row((dtm,))
 
 
 # ─── Batch hashing ───────────────────────────────────────────────────────────

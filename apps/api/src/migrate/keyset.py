@@ -75,6 +75,19 @@ def build_next_page(
         raise ValueError(
             f"last_pk has {len(last_pk)} values but pk_columns has {len(pk_columns)}"
         )
+    # NULL in any PK component is fatal for keyset paging: row-value
+    # comparison treats `(NULL, ...) > (...)` as NULL (unknown), not
+    # true, so the WHERE clause silently rejects every remaining row
+    # and the walk halts mid-table with no error. Reject up front
+    # rather than emit a query that loses data.
+    null_positions = [pk_columns[i] for i, v in enumerate(last_pk) if v is None]
+    if null_positions:
+        raise ValueError(
+            "keyset pagination cannot resume from a NULL primary-key value; "
+            f"NULL found in column(s): {null_positions}. PK columns used for "
+            "keyset must be NOT NULL — fix the source schema, choose a "
+            "different PK, or skip this table."
+        )
     cols = ", ".join(_quote_ident(c, dialect) for c in columns)
     order = ", ".join(_quote_ident(c, dialect) for c in pk_columns)
     pk_quoted = ", ".join(_quote_ident(c, dialect) for c in pk_columns)

@@ -269,7 +269,7 @@ API_PORT=8000
 ## Support
 
 - GitHub Issues: [Issues](https://github.com/yourname/hafen/issues)
-- Email: support@hafen.io (Phase 2+)
+- Email: support@hafen.ai (Phase 2+)
 
 ## Legal
 
