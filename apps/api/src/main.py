@@ -42,6 +42,7 @@ from .routers import (
     auth_local,
     account,
     billing,
+    cdc as cdc_router,
     cloud_analyze,
     convert,
     license as license_router,
@@ -239,6 +240,7 @@ app.include_router(sso_router.router)
 app.include_router(webhooks_router.router)
 app.include_router(schedules_router.router)
 app.include_router(masking_router.router)
+app.include_router(cdc_router.router)
 app.include_router(app_impact_route.router)
 app.include_router(runbook_route.router)
 app.include_router(usage_route.router)

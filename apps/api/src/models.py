@@ -1,4 +1,5 @@
 from sqlalchemy import (
+    BigInteger,
     Column,
     String,
     Integer,
@@ -11,7 +12,7 @@ from sqlalchemy import (
     Float,
     Boolean,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import uuid
@@ -135,6 +136,14 @@ class MigrationRecord(Base):
         nullable=True,
         index=True,
     )
+    # CDC (change-data-capture) tracking — only meaningful once the
+    # capture worker has started. See docs/CDC_DESIGN.md.
+    last_captured_scn = Column(BigInteger, nullable=True)
+    last_applied_scn = Column(BigInteger, nullable=True)
+    # "per_row" (default) = forward-progress with error tracking;
+    # "atomic" = batch-level fail-fast (stricter audit semantics).
+    # Enforced via CHECK constraint at the DB level.
+    cdc_apply_mode = Column(String(16), nullable=False, default="per_row")
 
     @property
     def elapsed_seconds(self) -> int:
@@ -558,6 +567,44 @@ class MigrationSchedule(Base):
     last_run_status = Column(String(50), nullable=True)
     created_at = Column(DateTime, default=utc_now, nullable=False)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+
+
+class MigrationCdcChange(Base):
+    """One captured change row in the CDC stream.
+
+    Populated by the capture worker (LogMiner-driven, pending); drained
+    by the apply worker which UPSERTs on the target. Rows carry their
+    own SCN so strict ordering is preserved across crashes and
+    replays. Applied rows are not immediately deleted — they're kept
+    for audit until a retention sweep removes them, and provide the
+    cutover verification path's "what did we apply since the snapshot"
+    answer.
+
+    See docs/CDC_DESIGN.md for the overall mechanism.
+    """
+
+    __tablename__ = "migration_cdc_changes"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    migration_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("migrations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    # Oracle System Change Number — total ordering within a single
+    # Oracle instance. Apply workers fetch SCN-ordered batches.
+    scn = Column(BigInteger, nullable=False)
+    source_schema = Column(String(255), nullable=False)
+    source_table = Column(String(255), nullable=False)
+    # 'I' insert, 'U' update, 'D' delete. CHECK constraint at DB level.
+    op = Column(String(1), nullable=False)
+    pk_json = Column(JSONB, nullable=False)
+    before_json = Column(JSONB, nullable=True)
+    after_json = Column(JSONB, nullable=True)
+    committed_at = Column(DateTime(timezone=True), nullable=False)
+    captured_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
+    applied_at = Column(DateTime(timezone=True), nullable=True)
+    apply_error = Column(Text, nullable=True)
 
 
 # Pydantic response models (not ORM)
