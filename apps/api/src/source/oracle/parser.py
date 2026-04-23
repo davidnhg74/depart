@@ -450,6 +450,41 @@ class _InterimParser:
                 i += 1
                 continue
 
+            # NVL / NVL2 — match the function-call shape so we don't
+            # flag a column literally named NVL. Both followed by `(`.
+            if (
+                t.kind == TokenKind.IDENT
+                and t.upper in ("NVL", "NVL2")
+                and i + 1 < n
+                and tokens[i + 1].kind == TokenKind.PUNCT
+                and tokens[i + 1].text == "("
+            ):
+                yield ConstructRef(ConstructTag.NVL, _span_of(t), t.upper)
+                i += 1
+                continue
+
+            # DECODE — same function-call shape. Must come BEFORE any
+            # generic IDENT handling so we can still detect a DECODE
+            # used as a column alias elsewhere.
+            if (
+                t.kind == TokenKind.IDENT
+                and t.upper == "DECODE"
+                and i + 1 < n
+                and tokens[i + 1].kind == TokenKind.PUNCT
+                and tokens[i + 1].text == "("
+            ):
+                yield ConstructRef(ConstructTag.DECODE, _span_of(t), "DECODE")
+                i += 1
+                continue
+
+            # INTERVAL — flag both the column-type qualifier and the
+            # literal forms (`INTERVAL '2-6' YEAR TO MONTH`). The
+            # converter ships one canonical example for both shapes.
+            if t.is_kw("INTERVAL"):
+                yield ConstructRef(ConstructTag.INTERVAL, _span_of(t), "INTERVAL")
+                i += 1
+                continue
+
             i += 1
 
     # ─── helpers ─────────────────────────────────────────────────────────────
