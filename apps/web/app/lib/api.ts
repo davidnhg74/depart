@@ -491,3 +491,65 @@ export async function testSsoDiscovery(): Promise<{
   const { data } = await api.post('/api/v1/auth/sso/test');
   return data;
 }
+
+
+// ─── Webhooks ────────────────────────────────────────────────────────────────
+
+export interface Webhook {
+  id: string;
+  name: string;
+  url_host: string | null;
+  url_set: boolean;
+  secret_set: boolean;
+  events: string[];
+  enabled: boolean;
+  last_triggered_at: string | null;
+  last_status: number | null;
+  last_error: string | null;
+}
+
+export const WEBHOOK_EVENTS = ['migration.completed', 'migration.failed'] as const;
+
+export async function listWebhooks(): Promise<Webhook[]> {
+  const { data } = await api.get<Webhook[]>('/api/v1/webhooks');
+  return data;
+}
+
+export async function createWebhook(body: {
+  name: string;
+  url: string;
+  secret?: string;
+  events: string[];
+  enabled: boolean;
+}): Promise<Webhook> {
+  const { data } = await api.post<Webhook>('/api/v1/webhooks', body);
+  return data;
+}
+
+export async function updateWebhook(
+  id: string,
+  patch: {
+    name?: string;
+    url?: string;
+    secret?: string;
+    events?: string[];
+    enabled?: boolean;
+  }
+): Promise<Webhook> {
+  const { data } = await api.patch<Webhook>(`/api/v1/webhooks/${id}`, patch);
+  return data;
+}
+
+export async function deleteWebhook(id: string): Promise<void> {
+  await api.delete(`/api/v1/webhooks/${id}`);
+}
+
+export async function testWebhook(id: string): Promise<{
+  id: string;
+  last_status: number | null;
+  last_error: string | null;
+  last_triggered_at: string | null;
+}> {
+  const { data } = await api.post(`/api/v1/webhooks/${id}/test`);
+  return data;
+}

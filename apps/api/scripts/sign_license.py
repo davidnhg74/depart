@@ -12,7 +12,7 @@ Usage:
         --subject ops@acme.com \
         --project acme-2026q2 \
         --tier pro \
-        --features ai_conversion,runbook_pdf \
+        --features ai_conversion,runbook_pdf,webhooks \
         --days 90
 
 Writes the JWT to stdout. Pipe into the /api/v1/license endpoint (once

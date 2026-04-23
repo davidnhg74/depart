@@ -483,6 +483,32 @@ class InstanceSettings(Base):
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
 
 
+class WebhookEndpoint(Base):
+    """Per-install webhook subscription for migration lifecycle events.
+
+    The runner's terminal state transitions call
+    webhook_service.fire_event(...), which looks up enabled endpoints
+    subscribed to the event and POSTs a signed JSON payload.
+
+    URL is encrypted at rest because Slack-style webhook URLs embed
+    the auth token in the path. Secret is encrypted because it's the
+    HMAC signing key the subscriber validates with."""
+
+    __tablename__ = "webhook_endpoints"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(255), nullable=False)
+    url = Column(EncryptedText, nullable=False)
+    secret = Column(EncryptedText, nullable=True)
+    events = Column(JSON, nullable=False, default=list)
+    enabled = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+    last_triggered_at = Column(DateTime, nullable=True)
+    last_status = Column(Integer, nullable=True)
+    last_error = Column(Text, nullable=True)
+
+
 # Pydantic response models (not ORM)
 
 

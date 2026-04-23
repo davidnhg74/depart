@@ -50,6 +50,7 @@ from .routers import (
     setup as setup_router,
     sso as sso_router,
     support,
+    webhooks as webhooks_router,
 )
 from .api.routes import app_impact as app_impact_route
 from .api.routes import runbook as runbook_route
@@ -233,6 +234,7 @@ app.include_router(audit_router.router)
 app.include_router(setup_router.router)
 app.include_router(auth_local.router)
 app.include_router(sso_router.router)
+app.include_router(webhooks_router.router)
 app.include_router(app_impact_route.router)
 app.include_router(runbook_route.router)
 app.include_router(usage_route.router)

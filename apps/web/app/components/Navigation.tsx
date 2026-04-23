@@ -52,6 +52,11 @@ export default function Navigation() {
             label: 'SSO',
             active: pathname === '/settings/sso',
           },
+          {
+            href: '/settings/webhooks',
+            label: 'Webhooks',
+            active: pathname === '/settings/webhooks',
+          },
         ]
       : []),
     ...(user?.role === 'admin' || user?.role === 'viewer'

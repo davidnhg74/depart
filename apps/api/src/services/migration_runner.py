@@ -36,6 +36,7 @@ from ..migrate.runner import Runner
 from ..migration.checkpoint import CheckpointManager
 from ..models import MigrationRecord
 from ..utils.time import utc_now
+from . import webhook_service
 
 
 logger = logging.getLogger(__name__)
@@ -87,6 +88,36 @@ def _fail(db: Session, record: MigrationRecord, message: str) -> None:
     record.error_message = message
     record.completed_at = utc_now()
     db.commit()
+    _fire_terminal_webhook(db, record, "migration.failed")
+
+
+def _migration_event_payload(record: MigrationRecord) -> dict:
+    return {
+        "migration_id": str(record.id),
+        "name": record.name,
+        "status": record.status,
+        "schema_name": record.schema_name,
+        "source_schema": record.source_schema,
+        "target_schema": record.target_schema,
+        "started_at": record.started_at.isoformat() if record.started_at else None,
+        "completed_at": record.completed_at.isoformat() if record.completed_at else None,
+        "elapsed_seconds": record.elapsed_seconds,
+        "rows_transferred": record.rows_transferred,
+        "total_rows": record.total_rows,
+        "error_message": record.error_message,
+    }
+
+
+def _fire_terminal_webhook(
+    db: Session, record: MigrationRecord, event: str
+) -> None:
+    try:
+        webhook_service.fire_event(db, event, _migration_event_payload(record))
+    except Exception:
+        # fire_event already swallows per-endpoint errors; this is a
+        # belt-and-braces guard for anything raised before the loop
+        # (e.g. a DB error loading endpoints). Never propagate.
+        logger.exception("webhook dispatch for %s failed", event)
 
 
 def _run_inner(db: Session, record: MigrationRecord) -> None:
@@ -183,6 +214,7 @@ def _run_inner(db: Session, record: MigrationRecord) -> None:
             record.status,
             record.rows_transferred,
         )
+        _fire_terminal_webhook(db, record, "migration.completed")
     finally:
         src_session.close()
         dst_session.close()
