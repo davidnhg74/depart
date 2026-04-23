@@ -125,6 +125,15 @@ def _noop_resume(table: TableRef) -> Optional[tuple]:
     return None
 
 
+RowTransformFn = Callable[[List[tuple], "TableSpec"], List[tuple]]
+"""Optional per-batch row transformer. Called after each source fetch
+and before the target COPY write. Used for PII masking: the service
+layer compiles masking rules into a transform and hands it to the
+Runner. Verification hashes are computed over the *post-transform*
+source stream so the source/target merkle roots still match when
+masking is active."""
+
+
 # ─── Runner ──────────────────────────────────────────────────────────────────
 
 
@@ -145,6 +154,7 @@ class Runner:
     batch_size: int = 5000
     checkpoint: CheckpointFn = _noop_checkpoint
     resume: ResumeFn = _noop_resume
+    row_transform: Optional[RowTransformFn] = None
 
     def execute(self, plan: LoadPlan, specs: Dict[str, TableSpec]) -> RunResult:
         """Run the entire plan. Returns a RunResult with per-table
@@ -172,13 +182,14 @@ class Runner:
         # The verification passes below intentionally do NOT resume —
         # they read the whole table on both sides to hash-compare.
         last_pk: tuple | None = self.resume(spec.target_table)
-        for batch in self._iter_batches(
+        source_batches = self._iter_batches(
             self.source_session,
             self.source_dialect,
             spec.source_table,
             spec,
             start_after_pk=last_pk,
-        ):
+        )
+        for batch in self._apply_transform(source_batches, spec):
             cp: CopyResult = copy_rows_to_postgres(
                 pg_conn=self.target_pg_conn,
                 table=spec.target_table.qualified(),
@@ -193,9 +204,14 @@ class Runner:
 
         # Two independent passes for verification — iterators can't be
         # replayed, and a second cheap read avoids holding the entire
-        # table in memory.
+        # table in memory. When masking is active, we hash the
+        # post-transform source so the root matches the target (which
+        # is already masked).
         source_hash = hash_table(
-            self._iter_batches(self.source_session, self.source_dialect, spec.source_table, spec)
+            self._apply_transform(
+                self._iter_batches(self.source_session, self.source_dialect, spec.source_table, spec),
+                spec,
+            )
         )
         target_hash = hash_table(
             self._iter_batches(self.target_session, Dialect.POSTGRES, spec.target_table, spec)
@@ -207,6 +223,19 @@ class Runner:
             target_hash=target_hash,
             verified=source_hash.matches(target_hash),
         )
+
+    def _apply_transform(
+        self, batches: Iterator[List[Sequence]], spec: TableSpec
+    ) -> Iterator[List[Sequence]]:
+        """Pass every batch through the configured row_transform, or
+        yield unchanged if none is set. Called for both the copy loop
+        and the source-side verification hash so both see the same
+        post-transform stream."""
+        if self.row_transform is None:
+            yield from batches
+            return
+        for batch in batches:
+            yield self.row_transform(batch, spec)
 
     def _iter_batches(
         self,

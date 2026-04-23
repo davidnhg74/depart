@@ -413,3 +413,61 @@ def test_runner_catches_up_target_sequences(schemas, sessions):
         cur.execute(f"INSERT INTO {dst_schema}.items (label) VALUES ('next') RETURNING id")
         (next_id,) = cur.fetchone()
     assert next_id == 103
+
+
+# ─── Masking integration ─────────────────────────────────────────────────────
+
+
+def test_runner_applies_row_transform_and_still_verifies(schemas, sessions, monkeypatch):
+    """With a row_transform set, the target receives masked values and
+    verification still passes because the source is hashed through the
+    same transform."""
+    monkeypatch.setenv("HAFEN_MASKING_KEY", "integration-test-key")
+    from src.services import masking_service
+
+    src_schema, dst_schema = schemas
+    src_session, dst_session, pg_conn = sessions
+    # Put recognizable "PII" into the `label` column so we can verify
+    # masking applied on the target side.
+    rows = [(i, f"user-{i}@example.com", i * 10) for i in range(1, 11)]
+    _create_seeded_source(pg_conn, src_schema, "items", rows)
+    _create_empty_target(pg_conn, dst_schema, "items")
+
+    spec = _spec(src_schema, dst_schema, "items")
+    plan = LoadPlan(groups=[LoadGroup(tables=[spec.target_table])])
+
+    # Rules key is the *source* table's qualified name.
+    rules = {
+        spec.source_table.qualified(): {
+            "label": {"strategy": "hash", "length": 16},
+        }
+    }
+    row_transform = masking_service.build_row_transform(rules)
+
+    runner = Runner(
+        source_session=src_session,
+        target_session=dst_session,
+        target_pg_conn=pg_conn,
+        source_dialect=Dialect.POSTGRES,
+        batch_size=4,
+        row_transform=row_transform,
+    )
+    result = runner.execute(plan, {spec.target_table.qualified(): spec})
+
+    target_result = result.tables[spec.target_table.qualified()]
+    assert target_result.rows_copied == 10
+    # Verification still passes — hashing the post-mask source matches
+    # the target (which is already masked).
+    assert target_result.verified, target_result.discrepancy
+
+    # Confirm the target actually received masked values, not originals.
+    with pg_conn.cursor() as cur:
+        cur.execute(f"SELECT id, label, qty FROM {dst_schema}.items ORDER BY id")
+        target_rows = cur.fetchall()
+    assert len(target_rows) == 10
+    for src_row, tgt_row in zip(rows, target_rows):
+        assert tgt_row[0] == src_row[0]               # pk unchanged
+        assert tgt_row[2] == src_row[2]               # non-masked col unchanged
+        assert tgt_row[1] != src_row[1]               # label was masked
+        assert len(tgt_row[1]) == 16                  # at configured length
+        assert "@" not in tgt_row[1]                  # not an email anymore

@@ -110,6 +110,10 @@ class MigrationRecord(Base):
     source_schema = Column(String(255), nullable=True)
     target_schema = Column(String(255), nullable=True)
     tables = Column(Text, nullable=True)  # JSON list of names, or NULL = all
+    # Per-column PII redaction rules applied during data movement.
+    # JSON-serialized dict: { "SCHEMA.TABLE": { "COLUMN": {"strategy": ..., ...} } }.
+    # NULL = no masking (default). See src/services/masking_service.py.
+    masking_rules = Column(Text, nullable=True)
     batch_size = Column(Integer, default=5000)
     create_tables = Column(Boolean, default=False, nullable=False)
     status = Column(

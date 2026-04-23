@@ -612,3 +612,59 @@ export async function scheduleRunNow(
   );
   return data;
 }
+
+
+// ─── Masking ─────────────────────────────────────────────────────────────────
+
+export type MaskingStrategy = 'null' | 'fixed' | 'hash' | 'partial' | 'regex';
+
+export interface MaskingRule {
+  strategy: MaskingStrategy;
+  value?: string;
+  length?: number;
+  keep_first?: number;
+  keep_last?: number;
+  mask_char?: string;
+  pattern?: string;
+  replacement?: string;
+}
+
+export type MaskingRules = Record<string, Record<string, MaskingRule>>;
+
+export interface MaskingPreview {
+  samples: Record<string, Array<Record<string, unknown>>>;
+  errors: Record<string, string>;
+}
+
+export async function getMasking(migrationId: string): Promise<MaskingRules> {
+  const { data } = await api.get<{ rules: MaskingRules }>(
+    `/api/v1/migrations/${migrationId}/masking`,
+  );
+  return data.rules;
+}
+
+export async function putMasking(
+  migrationId: string,
+  rules: MaskingRules,
+): Promise<MaskingRules> {
+  const { data } = await api.put<{ rules: MaskingRules }>(
+    `/api/v1/migrations/${migrationId}/masking`,
+    { rules },
+  );
+  return data.rules;
+}
+
+export async function deleteMasking(migrationId: string): Promise<void> {
+  await api.delete(`/api/v1/migrations/${migrationId}/masking`);
+}
+
+export async function previewMasking(
+  migrationId: string,
+  sampleSize = 5,
+): Promise<MaskingPreview> {
+  const { data } = await api.post<MaskingPreview>(
+    `/api/v1/migrations/${migrationId}/masking/preview`,
+    { sample_size: sampleSize },
+  );
+  return data;
+}

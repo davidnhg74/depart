@@ -45,6 +45,7 @@ from .routers import (
     cloud_analyze,
     convert,
     license as license_router,
+    masking as masking_router,
     migrations as migrations_router,
     schedules as schedules_router,
     settings as settings_router,
@@ -237,6 +238,7 @@ app.include_router(auth_local.router)
 app.include_router(sso_router.router)
 app.include_router(webhooks_router.router)
 app.include_router(schedules_router.router)
+app.include_router(masking_router.router)
 app.include_router(app_impact_route.router)
 app.include_router(runbook_route.router)
 app.include_router(usage_route.router)

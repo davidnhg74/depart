@@ -36,7 +36,7 @@ from ..migrate.runner import Runner
 from ..migration.checkpoint import CheckpointManager
 from ..models import MigrationRecord
 from ..utils.time import utc_now
-from . import webhook_service
+from . import masking_service, webhook_service
 
 
 logger = logging.getLogger(__name__)
@@ -180,6 +180,19 @@ def _run_inner(db: Session, record: MigrationRecord) -> None:
         callback = make_checkpoint_callback(manager, str(record.id))
         resume = make_resume_callback(manager, str(record.id))
 
+        # Compile masking rules → row transform once per run. Rules
+        # referencing a column that was dropped from the source since
+        # they were saved just get skipped (logged); we don't fail the
+        # run for drift.
+        row_transform = None
+        try:
+            rules = masking_service.load_rules_from_text(record.masking_rules)
+            if rules:
+                row_transform = masking_service.build_row_transform(rules)
+        except (ValueError, RuntimeError) as exc:
+            _fail(db, record, f"masking configuration error: {exc}")
+            return
+
         runner = Runner(
             source_session=src_session,
             target_session=dst_session,
@@ -188,6 +201,7 @@ def _run_inner(db: Session, record: MigrationRecord) -> None:
             batch_size=record.batch_size or 5000,
             checkpoint=callback,
             resume=resume,
+            row_transform=row_transform,
         )
 
         result = runner.execute(plan, specs)
