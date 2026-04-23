@@ -262,6 +262,10 @@ def create_migration(
         # existing table — mirror source_schema into it so the legacy
         # CheckpointManager.create_migration path keeps working.
         schema_name=body.source_schema,
+        # Tenant ownership. None in self-hosted single-tenant mode
+        # (auth disabled → caller is None); set in cloud mode so the
+        # list/get/run filters apply to this row going forward.
+        user_id=caller.id if caller is not None else None,
         source_url=body.source_url,
         target_url=body.target_url,
         source_schema=body.source_schema,
@@ -294,10 +298,10 @@ def create_migration(
 @router.get("", response_model=List[MigrationSummary])
 def list_migrations(
     db: Session = Depends(get_db),
-    _caller=Depends(require_role("admin", "operator", "viewer")),
+    caller=Depends(require_role("admin", "operator", "viewer")),
 ) -> List[MigrationSummary]:
     rows = (
-        db.query(MigrationRecord)
+        _filter_for_user(db.query(MigrationRecord), caller)
         .order_by(MigrationRecord.created_at.desc())
         .all()
     )
@@ -308,9 +312,9 @@ def list_migrations(
 def get_migration(
     migration_id: str,
     db: Session = Depends(get_db),
-    _caller=Depends(require_role("admin", "operator", "viewer")),
+    caller=Depends(require_role("admin", "operator", "viewer")),
 ) -> MigrationDetail:
-    record = _load_or_404(db, migration_id)
+    record = _load_or_404_for_user(db, migration_id, caller)
     checkpoints = (
         db.query(MigrationCheckpointRecord)
         .filter(MigrationCheckpointRecord.migration_id == record.id)
@@ -334,7 +338,7 @@ async def run(
     re-run of an already-running migration and let the checkpoint-
     based resume logic handle it — pressing 'Run' twice is a UX
     hazard, not a correctness one."""
-    record = _load_or_404(db, migration_id)
+    record = _load_or_404_for_user(db, migration_id, caller)
 
     # Flip to pending→in_progress before the background task starts so
     # the UI sees immediate feedback on the next poll; the runner
@@ -372,7 +376,7 @@ def delete_migration(
     Guard: refuse while the run is active so we don't orphan the
     background task — operators must wait for completion (or mark it
     failed) before clean-up."""
-    record = _load_or_404(db, migration_id)
+    record = _load_or_404_for_user(db, migration_id, caller)
     if record.status in ("queued", "in_progress"):
         raise HTTPException(
             status_code=400,
@@ -420,12 +424,12 @@ class PlanResponse(BaseModel):
 def preview_plan(
     migration_id: str,
     db: Session = Depends(get_db),
-    _caller=Depends(require_role("admin", "operator")),
+    caller=Depends(require_role("admin", "operator")),
 ) -> PlanResponse:
     """Introspect the source + target schemas and return everything
     the Run action *would* do, without doing any of it. Useful for
     'let me read the CREATE TABLEs before I pull the trigger.'"""
-    record = _load_or_404(db, migration_id)
+    record = _load_or_404_for_user(db, migration_id, caller)
     try:
         result = dry_run_plan(record)
     except ValueError as exc:
@@ -471,13 +475,13 @@ def advise_plan(
     migration_id: str,
     ai: bool = False,
     db: Session = Depends(get_db),
-    _caller=Depends(require_role("admin", "operator")),
+    caller=Depends(require_role("admin", "operator")),
 ) -> AdviceResponse:
     """Recommend a per-table `batch_size` for the migration's source
     schema. Pass `?ai=true` to enrich the deterministic baseline with a
     Claude refinement pass (requires `ANTHROPIC_API_KEY`); without it,
     we return the heuristic-only result instantly with no API cost."""
-    record = _load_or_404(db, migration_id)
+    record = _load_or_404_for_user(db, migration_id, caller)
 
     ai_client = None
     if ai:
@@ -530,7 +534,7 @@ class QualityCheckResponse(BaseModel):
 def quality_check(
     migration_id: str,
     db: Session = Depends(get_db),
-    _caller=Depends(require_role("admin", "operator")),
+    caller=Depends(require_role("admin", "operator")),
 ) -> QualityCheckResponse:
     """Run Layer 3 quality validation against the source (always) and
     the target (when the migration has run). Pre-copy: VARCHAR length
@@ -538,7 +542,7 @@ def quality_check(
     MIN/MAX agreement.
 
     Read-only. Safe to call before, during, or after a migration run."""
-    record = _load_or_404(db, migration_id)
+    record = _load_or_404_for_user(db, migration_id, caller)
     try:
         result = quality_check_record(record)
     except ValueError as exc:
@@ -558,13 +562,13 @@ def quality_check(
 def progress(
     migration_id: str,
     db: Session = Depends(get_db),
-    _caller=Depends(require_role("admin", "operator", "viewer")),
+    caller=Depends(require_role("admin", "operator", "viewer")),
 ) -> MigrationDetail:
     """Exact same shape as GET /{id}; named separately so UIs can make
     the polling intent explicit in their trace logs, and so we can
     later split the polling path onto a read-replica if list traffic
     grows."""
-    record = _load_or_404(db, migration_id)
+    record = _load_or_404_for_user(db, migration_id, caller)
     checkpoints = (
         db.query(MigrationCheckpointRecord)
         .filter(MigrationCheckpointRecord.migration_id == record.id)
@@ -577,7 +581,21 @@ def progress(
 # ─── Internals ───────────────────────────────────────────────────────────────
 
 
-def _load_or_404(db: Session, migration_id: str) -> MigrationRecord:
+def _load_or_404_for_user(
+    db: Session, migration_id: str, caller
+) -> MigrationRecord:
+    """Look up a migration with tenant scoping.
+
+    Cloud mode (`caller is not None`): the row must exist AND be
+    owned by `caller.id`. A row owned by someone else returns 404 —
+    deliberately, so cross-tenant probes can't enumerate IDs by
+    distinguishing 404-not-found from 403-forbidden.
+
+    Self-hosted single-tenant mode (`caller is None`, when
+    `ENABLE_SELF_HOSTED_AUTH=false` makes `require_role` a no-op):
+    no tenant filter applies — the operator owns the entire install,
+    sees everything, exactly the legacy single-tenant behavior. The
+    `user_id` column on existing rows stays NULL in that mode."""
     try:
         uid = uuid.UUID(migration_id)
     except ValueError:
@@ -585,7 +603,18 @@ def _load_or_404(db: Session, migration_id: str) -> MigrationRecord:
     record = db.get(MigrationRecord, uid)
     if record is None:
         raise HTTPException(status_code=404, detail=f"migration {migration_id!r} not found")
+    if caller is not None and record.user_id != caller.id:
+        # Cross-tenant: behave identically to "row doesn't exist".
+        raise HTTPException(status_code=404, detail=f"migration {migration_id!r} not found")
     return record
+
+
+def _filter_for_user(query, caller):
+    """Apply the tenant filter to a list query. No-op in single-tenant
+    self-hosted mode (caller is None); strict equality in cloud mode."""
+    if caller is None:
+        return query
+    return query.filter(MigrationRecord.user_id == caller.id)
 
 
 # Previously this module defined `_run_in_fresh_session` for direct

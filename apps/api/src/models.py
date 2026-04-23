@@ -99,6 +99,14 @@ class MigrationRecord(Base):
     # names so two migrations against the same schema have separate
     # rows with different labels.
     name = Column(String(255), nullable=True)
+    # Tenant scoping for cloud SaaS. Nullable: self-hosted installs
+    # (ENABLE_SELF_HOSTED_AUTH=false) have no user concept and leave
+    # this NULL; cloud-mode installs populate it from the
+    # authenticated caller and the router filters every read/write by
+    # it. See `routers/migrations.py:_load_or_404_for_user`.
+    user_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True
+    )
     # Legacy source-only schema column (kept for back-compat with the
     # existing CheckpointManager.create_migration(schema_name) call).
     schema_name = Column(String(255), nullable=False)
