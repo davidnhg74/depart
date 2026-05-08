@@ -27,6 +27,8 @@ from src.services.cdc.queue import (
     queue_status,
 )
 
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture
 def db():

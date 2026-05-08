@@ -14,6 +14,8 @@ from src.migrate.sequences import (
     discover_owned_sequences,
 )
 
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture
 def pg_conn():

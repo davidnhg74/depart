@@ -255,64 +255,71 @@ class TestRunSampler:
 
 
 class TestSamplerEndpoints:
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
+        yield
+        app.dependency_overrides.clear()
+
+    def _make_migration(self, *, source_url=None, target_url=None):
+        from src.models import MigrationRecord
+        m = MagicMock(spec=MigrationRecord)
+        m.id = uuid.uuid4()
+        m.user_id = None
+        m.source_url = source_url
+        m.target_url = target_url
+        m.schema_name = "test"
+        m.status = "completed"
+        m.tables = None
+        m.source_schema = "public"
+        m.target_schema = "public"
+        return m
+
+    def _override_db(self, migration):
+        from src.db import get_db
+        mock_db = MagicMock()
+        mock_db.get.return_value = migration
+        mock_db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = []
+        app.dependency_overrides[get_db] = lambda: mock_db
+        return mock_db
+
     def test_run_sample_no_source_url(self, client):
         """Returns 400 when source_url is missing."""
-        from src.db import get_db_context
-        from src.models import MigrationRecord
+        migration = self._make_migration(target_url="postgresql://localhost/fake")
+        self._override_db(migration)
 
-        with get_db_context() as session:
-            record = MigrationRecord(
-                schema_name="sample-test",
-                status="completed",
-                target_url="postgresql://localhost/fake",
-            )
-            session.add(record)
-            session.commit()
-            mid = str(record.id)
-
-        response = client.post(f"/api/v1/migrations/{mid}/sample")
+        response = client.post(f"/api/v1/migrations/{migration.id}/sample")
         assert response.status_code == 400
         assert "source_url" in response.json()["detail"]
 
     def test_run_sample_no_target_url(self, client):
         """Returns 400 when target_url is missing."""
-        from src.db import get_db_context
-        from src.models import MigrationRecord
+        migration = self._make_migration(
+            source_url="oracle+oracledb://user:pass@host:1521/?service_name=ORCL"
+        )
+        self._override_db(migration)
 
-        with get_db_context() as session:
-            record = MigrationRecord(
-                schema_name="sample-test-2",
-                status="completed",
-                source_url="oracle+oracledb://user:pass@host:1521/?service_name=ORCL",
-            )
-            session.add(record)
-            session.commit()
-            mid = str(record.id)
-
-        response = client.post(f"/api/v1/migrations/{mid}/sample")
+        response = client.post(f"/api/v1/migrations/{migration.id}/sample")
         assert response.status_code == 400
         assert "target_url" in response.json()["detail"]
 
     def test_run_sample_not_found(self, client):
+        from src.db import get_db
+        mock_db = MagicMock()
+        mock_db.get.return_value = None
+        app.dependency_overrides[get_db] = lambda: mock_db
+
         response = client.post(f"/api/v1/migrations/{uuid.uuid4()}/sample")
         assert response.status_code == 404
 
     def test_run_sample_success_clean(self, client):
         """Mock sample_migration returning clean result."""
-        from src.db import get_db_context
-        from src.models import MigrationRecord
         from src.services.sampler_service import SamplerResult
 
-        with get_db_context() as session:
-            record = MigrationRecord(
-                schema_name="sample-test-3",
-                status="completed",
-                source_url="oracle+oracledb://u:p@h:1521/?service_name=X",
-                target_url="postgresql://localhost/fake",
-            )
-            session.add(record)
-            session.commit()
-            mid = str(record.id)
+        migration = self._make_migration(
+            source_url="oracle+oracledb://u:p@h:1521/?service_name=X",
+            target_url="postgresql://localhost/fake",
+        )
+        self._override_db(migration)
 
         fake_result = SamplerResult(
             mismatches=[],
@@ -325,7 +332,7 @@ class TestSamplerEndpoints:
 
         with patch("src.routers.migrations.sample_migration", return_value=fake_result):
             response = client.post(
-                f"/api/v1/migrations/{mid}/sample", json={"sample_size": 50}
+                f"/api/v1/migrations/{migration.id}/sample", json={"sample_size": 50}
             )
 
         assert response.status_code == 200
@@ -338,21 +345,13 @@ class TestSamplerEndpoints:
 
     def test_run_sample_with_mismatches(self, client):
         """Mock result with mismatches returns mismatch details."""
-        from src.db import get_db_context
-        from src.models import MigrationRecord
-        from src.migrate.sampler import SampleMismatch
         from src.services.sampler_service import SamplerResult
 
-        with get_db_context() as session:
-            record = MigrationRecord(
-                schema_name="sample-test-4",
-                status="completed",
-                source_url="oracle+oracledb://u:p@h:1521/?service_name=X",
-                target_url="postgresql://localhost/fake",
-            )
-            session.add(record)
-            session.commit()
-            mid = str(record.id)
+        migration = self._make_migration(
+            source_url="oracle+oracledb://u:p@h:1521/?service_name=X",
+            target_url="postgresql://localhost/fake",
+        )
+        self._override_db(migration)
 
         mismatch = SampleMismatch(
             table="ORDERS",
@@ -372,7 +371,7 @@ class TestSamplerEndpoints:
         )
 
         with patch("src.routers.migrations.sample_migration", return_value=fake_result):
-            response = client.post(f"/api/v1/migrations/{mid}/sample")
+            response = client.post(f"/api/v1/migrations/{migration.id}/sample")
 
         assert response.status_code == 200
         data = response.json()
@@ -383,66 +382,47 @@ class TestSamplerEndpoints:
         assert data["mismatches"][0]["mismatch_type"] == "value_mismatch"
 
     def test_list_sample_results_empty(self, client):
-        from src.db import get_db_context
-        from src.models import MigrationRecord
+        migration = self._make_migration()
+        self._override_db(migration)  # query chain returns [] by default
 
-        with get_db_context() as session:
-            record = MigrationRecord(schema_name="sample-list-test", status="completed")
-            session.add(record)
-            session.commit()
-            mid = str(record.id)
-
-        response = client.get(f"/api/v1/migrations/{mid}/sample")
+        response = client.get(f"/api/v1/migrations/{migration.id}/sample")
         assert response.status_code == 200
         assert response.json() == []
 
     def test_list_sample_results_returns_history(self, client):
-        from src.db import get_db_context
-        from src.models import DataSampleResult, MigrationRecord
-        from src.utils.time import utc_now
-        from datetime import timedelta
+        from datetime import datetime, timezone, timedelta
 
-        with get_db_context() as session:
-            record = MigrationRecord(schema_name="sample-list-test-2", status="completed")
-            session.add(record)
-            session.commit()
-            mid = str(record.id)
+        migration = self._make_migration()
+        mock_db = self._override_db(migration)
 
-            now = utc_now()
-            for i in range(3):
-                r = DataSampleResult(
-                    migration_id=record.id,
-                    sample_size=100,
-                    tables_sampled=5,
-                    tables_skipped=0,
-                    mismatch_count=i,
-                    mismatches=[],
-                    overall_status="clean" if i == 0 else "mismatches_found",
-                    created_at=now - timedelta(hours=i),
-                )
-                session.add(r)
-            session.commit()
+        now = datetime.now(timezone.utc)
+        rows = []
+        for i in range(3):
+            r = MagicMock()
+            r.id = uuid.uuid4()
+            r.created_at = now - timedelta(hours=i)  # newest first
+            r.overall_status = "clean" if i == 0 else "mismatches_found"
+            r.tables_sampled = 5
+            r.tables_skipped = 0
+            r.mismatch_count = i
+            r.sample_size = 100
+            rows.append(r)
 
-        response = client.get(f"/api/v1/migrations/{mid}/sample")
+        mock_db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = rows
+
+        response = client.get(f"/api/v1/migrations/{migration.id}/sample")
         assert response.status_code == 200
-        results = response.json()
-        assert len(results) == 3
-        # Newest first.
-        ts = [r["created_at"] for r in results]
+        items = response.json()
+        assert len(items) == 3
+        ts = [item["created_at"] for item in items]
         assert ts == sorted(ts, reverse=True)
 
     def test_sample_size_validated(self, client):
-        """sample_size must be >= 1."""
-        from src.db import get_db_context
-        from src.models import MigrationRecord
-
-        with get_db_context() as session:
-            record = MigrationRecord(schema_name="sample-val-test", status="completed")
-            session.add(record)
-            session.commit()
-            mid = str(record.id)
+        """sample_size must be >= 1; Pydantic rejects before DB is touched."""
+        migration = self._make_migration()
+        self._override_db(migration)
 
         response = client.post(
-            f"/api/v1/migrations/{mid}/sample", json={"sample_size": 0}
+            f"/api/v1/migrations/{migration.id}/sample", json={"sample_size": 0}
         )
         assert response.status_code == 422

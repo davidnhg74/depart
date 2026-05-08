@@ -85,8 +85,9 @@ ignore = ["E402", "E702", "E712", "E722", "E731", "F841"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+addopts = "-m 'not integration and not oracle'"
 markers = [
-    "integration: requires a running Postgres",
+    "integration: requires a running Postgres (make up && alembic upgrade head)",
     "oracle: requires a running Oracle (use `make oracle-up`)",
 ]
 

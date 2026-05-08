@@ -19,6 +19,7 @@ from sqlalchemy.orm import sessionmaker
 from src.config import settings as env_settings
 from src.models import MigrationCdcChange, MigrationRecord
 from src.services.cdc import apply_worker
+pytestmark = pytest.mark.integration
 
 
 # ─── Fixtures ────────────────────────────────────────────────────────

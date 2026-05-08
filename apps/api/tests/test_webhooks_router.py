@@ -24,6 +24,8 @@ from src.main import app
 from src.models import InstanceSettings, User, WebhookEndpoint
 from src.services.settings_service import set_license_jwt
 
+pytestmark = pytest.mark.integration
+
 
 client = TestClient(app)
 

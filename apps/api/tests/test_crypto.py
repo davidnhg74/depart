@@ -26,6 +26,8 @@ from src.services.crypto import (
     has_encryption_key,
 )
 
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture
 def fresh_key(monkeypatch):

@@ -24,6 +24,7 @@ from src.services.migration_runner import (
     _migration_event_payload,
 )
 from src.utils.time import utc_now
+pytestmark = pytest.mark.integration
 
 
 @pytest.fixture

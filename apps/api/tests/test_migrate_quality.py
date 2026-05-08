@@ -30,6 +30,8 @@ from src.migrate.quality import (
     scan_varchar_lengths,
 )
 
+pytestmark = pytest.mark.integration
+
 
 # ─── Test rig ────────────────────────────────────────────────────────────────
 

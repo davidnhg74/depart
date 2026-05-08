@@ -17,6 +17,8 @@ import pytest
 from src.config import settings
 from src.migrate.copy import copy_rows_to_postgres
 
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture
 def pg_conn():

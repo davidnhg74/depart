@@ -29,6 +29,7 @@ from src.services.branding_service import (
     DEFAULT_SUPPORT_EMAIL,
 )
 
+pytestmark = pytest.mark.integration
 
 client = TestClient(app)
 _DEV_KEY = Path.home() / ".hafen-keys" / "license_private_dev.pem"

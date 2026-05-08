@@ -1,10 +1,13 @@
 """Integration tests for Phase 1 /api/v1/analyze endpoint."""
 
+import uuid
 import pytest
 import io
 import zipfile
+from unittest.mock import MagicMock
 from fastapi.testclient import TestClient
 from src.main import app
+from src.db import get_db
 
 
 @pytest.fixture
@@ -72,6 +75,28 @@ def complex_sql_zip():
         zf.writestr("complex.sql", sql_content)
     zip_buffer.seek(0)
     return zip_buffer
+
+
+@pytest.fixture(autouse=True)
+def mock_db_for_analyze():
+    """Override get_db so /api/v1/analyze tests don't need a live Postgres.
+
+    The endpoint persists Lead and AnalysisJob records; we mock add/commit/
+    refresh so the complexity-scoring logic (pure Python) can run without a DB.
+    """
+    def _refresh_side_effect(obj):
+        if getattr(obj, "id", None) is None:
+            obj.id = uuid.uuid4()
+
+    mock_session = MagicMock()
+    mock_session.query.return_value.filter.return_value.first.return_value = None
+    mock_session.add.return_value = None
+    mock_session.commit.return_value = None
+    mock_session.refresh.side_effect = _refresh_side_effect
+
+    app.dependency_overrides[get_db] = lambda: mock_session
+    yield mock_session
+    app.dependency_overrides.clear()
 
 
 class TestPhase1API:

@@ -22,6 +22,7 @@ from src.migrate.introspect import introspect
 from src.migrate.keyset import Dialect
 from src.migrate.planner import LoadGroup, LoadPlan, TableRef
 from src.migrate.runner import Runner, TableSpec, _materialize_value, _stream_batches
+pytestmark = pytest.mark.integration
 
 
 # ─── Test rig ────────────────────────────────────────────────────────────────

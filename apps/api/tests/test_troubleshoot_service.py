@@ -30,6 +30,8 @@ from src.services.troubleshoot_service import (
 )
 from src.utils.time import utc_now
 
+pytestmark = pytest.mark.integration
+
 
 # ─── smart_truncate ─────────────────────────────────────────────────────────
 

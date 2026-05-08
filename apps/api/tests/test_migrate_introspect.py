@@ -19,6 +19,7 @@ from src.config import settings
 from src.migrate.introspect import introspect
 from src.migrate.keyset import Dialect
 from src.migrate.planner import TableRef, plan_load_order
+pytestmark = pytest.mark.integration
 
 
 @pytest.fixture

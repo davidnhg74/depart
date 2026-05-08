@@ -776,6 +776,37 @@ class ProductionMonitorSnapshot(Base):
     tables_checked = Column(Integer, nullable=False, default=0)
 
 
+class CutoverReadinessSnapshot(Base):
+    """Layer 9 — cutover readiness assessment snapshot.
+
+    One row per assessment invocation. Stores per-signal verdicts and the
+    aggregated score so operators can track readiness trend over time.
+    """
+
+    __tablename__ = "cutover_readiness_snapshots"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    migration_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("migrations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True
+    )
+    created_at = Column(
+        DateTime(timezone=True), default=utc_now, nullable=False, index=True
+    )
+    # List of ReadinessSignal dicts: {layer, label, status, summary, detail}
+    signals = Column(JSONB, nullable=False, default=list)
+    blocking_count = Column(Integer, nullable=False, default=0)
+    advisory_count = Column(Integer, nullable=False, default=0)
+    not_run_count = Column(Integer, nullable=False, default=0)
+    ready_to_cut = Column(Boolean, nullable=False)
+    score = Column(Integer, nullable=False)  # 0–100
+
+
 # Pydantic response models (not ORM)
 
 

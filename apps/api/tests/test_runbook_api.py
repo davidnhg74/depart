@@ -28,6 +28,9 @@ FIXTURES = Path(__file__).parent / "fixtures" / "app_impact"
 _DEV_KEY = Path.home() / ".hafen-keys" / "license_private_dev.pem"
 
 
+pytestmark = pytest.mark.integration
+
+
 @pytest.fixture
 def client():
     from src.api.routes.runbook import router

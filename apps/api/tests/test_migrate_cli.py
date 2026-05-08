@@ -16,6 +16,7 @@ import pytest
 
 from src.config import settings
 from src.migrate.__main__ import main
+pytestmark = pytest.mark.integration
 
 
 @pytest.fixture

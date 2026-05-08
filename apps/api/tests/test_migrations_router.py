@@ -19,6 +19,7 @@ from src.config import settings as env_settings
 from src.main import app
 from src.models import MigrationCheckpointRecord, MigrationRecord
 
+pytestmark = pytest.mark.integration
 
 client = TestClient(app)
 

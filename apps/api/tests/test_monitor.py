@@ -256,7 +256,12 @@ class TestRunMonitor:
 
 
 class TestMonitorEndpoints:
-    def _make_migration(self, target_url="postgresql://localhost/test"):
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
+        yield
+        app.dependency_overrides.clear()
+
+    def _make_migration(self, *, target_url="postgresql://localhost/test"):
         from src.models import MigrationRecord
         m = MagicMock(spec=MigrationRecord)
         m.id = uuid.uuid4()
@@ -270,41 +275,38 @@ class TestMonitorEndpoints:
         m.status = "completed"
         return m
 
+    def _override_db(self, migration):
+        from src.db import get_db
+        mock_db = MagicMock()
+        mock_db.get.return_value = migration
+        mock_db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = []
+        app.dependency_overrides[get_db] = lambda: mock_db
+        return mock_db
+
     def test_run_monitor_no_target_url(self, client):
         """Returns 400 when migration has no target_url."""
-        from src.db import get_db_context
-        from src.models import MigrationRecord
+        migration = self._make_migration(target_url=None)
+        self._override_db(migration)
 
-        with get_db_context() as session:
-            record = MigrationRecord(schema_name="mon-test", status="completed")
-            session.add(record)
-            session.commit()
-            mid = str(record.id)
-
-        response = client.post(f"/api/v1/migrations/{mid}/monitor")
+        response = client.post(f"/api/v1/migrations/{migration.id}/monitor")
         assert response.status_code == 400
         assert "target_url" in response.json()["detail"]
 
     def test_run_monitor_not_found(self, client):
-        fake_id = str(uuid.uuid4())
-        response = client.post(f"/api/v1/migrations/{fake_id}/monitor")
+        from src.db import get_db
+        mock_db = MagicMock()
+        mock_db.get.return_value = None
+        app.dependency_overrides[get_db] = lambda: mock_db
+
+        response = client.post(f"/api/v1/migrations/{uuid.uuid4()}/monitor")
         assert response.status_code == 404
 
     def test_run_monitor_success(self, client):
         """Happy path: mock monitor_migration returns clean result."""
-        from src.db import get_db_context
-        from src.models import MigrationRecord
         from src.services.monitor_service import MonitorResult
 
-        with get_db_context() as session:
-            record = MigrationRecord(
-                schema_name="mon-test-2",
-                status="completed",
-                target_url="postgresql://localhost/fake",
-            )
-            session.add(record)
-            session.commit()
-            mid = str(record.id)
+        migration = self._make_migration(target_url="postgresql://localhost/fake")
+        self._override_db(migration)
 
         fake_result = MonitorResult(
             findings=[],
@@ -315,7 +317,7 @@ class TestMonitorEndpoints:
         )
 
         with patch("src.routers.migrations.monitor_migration", return_value=fake_result):
-            response = client.post(f"/api/v1/migrations/{mid}/monitor")
+            response = client.post(f"/api/v1/migrations/{migration.id}/monitor")
 
         assert response.status_code == 200
         data = response.json()
@@ -326,20 +328,10 @@ class TestMonitorEndpoints:
 
     def test_run_monitor_with_findings(self, client):
         """Monitor returns findings when issues are detected."""
-        from src.db import get_db_context
-        from src.models import MigrationRecord
-        from src.migrate.monitor import MonitorFinding
         from src.services.monitor_service import MonitorResult
 
-        with get_db_context() as session:
-            record = MigrationRecord(
-                schema_name="mon-test-3",
-                status="completed",
-                target_url="postgresql://localhost/fake",
-            )
-            session.add(record)
-            session.commit()
-            mid = str(record.id)
+        migration = self._make_migration(target_url="postgresql://localhost/fake")
+        self._override_db(migration)
 
         fake_result = MonitorResult(
             findings=[
@@ -358,7 +350,7 @@ class TestMonitorEndpoints:
         )
 
         with patch("src.routers.migrations.monitor_migration", return_value=fake_result):
-            response = client.post(f"/api/v1/migrations/{mid}/monitor")
+            response = client.post(f"/api/v1/migrations/{migration.id}/monitor")
 
         assert response.status_code == 200
         data = response.json()
@@ -368,49 +360,36 @@ class TestMonitorEndpoints:
 
     def test_list_monitor_snapshots_empty(self, client):
         """Returns empty list when no snapshots exist."""
-        from src.db import get_db_context
-        from src.models import MigrationRecord
+        migration = self._make_migration()
+        self._override_db(migration)  # query chain returns [] by default
 
-        with get_db_context() as session:
-            record = MigrationRecord(schema_name="mon-list-test", status="completed")
-            session.add(record)
-            session.commit()
-            mid = str(record.id)
-
-        response = client.get(f"/api/v1/migrations/{mid}/monitor")
+        response = client.get(f"/api/v1/migrations/{migration.id}/monitor")
         assert response.status_code == 200
         assert response.json() == []
 
     def test_list_monitor_snapshots_returns_history(self, client):
         """Returns snapshots ordered newest-first."""
-        from src.db import get_db_context
-        from src.models import MigrationRecord, ProductionMonitorSnapshot
-        from src.utils.time import utc_now
-        from datetime import timedelta
+        from datetime import datetime, timezone, timedelta
 
-        with get_db_context() as session:
-            record = MigrationRecord(schema_name="mon-list-test-2", status="completed")
-            session.add(record)
-            session.commit()
-            mid = str(record.id)
+        migration = self._make_migration()
+        mock_db = self._override_db(migration)
 
-            now = utc_now()
-            for i in range(3):
-                snap = ProductionMonitorSnapshot(
-                    migration_id=record.id,
-                    table_row_counts={"orders": 1000 + i * 10},
-                    findings=[],
-                    overall_severity="clean",
-                    tables_checked=1,
-                    created_at=now - timedelta(hours=i),
-                )
-                session.add(snap)
-            session.commit()
+        now = datetime.now(timezone.utc)
+        snaps = []
+        for i in range(3):
+            s = MagicMock()
+            s.id = uuid.uuid4()
+            s.created_at = now - timedelta(hours=i)  # newest first
+            s.overall_severity = "clean"
+            s.tables_checked = 1
+            s.findings = []
+            snaps.append(s)
 
-        response = client.get(f"/api/v1/migrations/{mid}/monitor")
+        mock_db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = snaps
+
+        response = client.get(f"/api/v1/migrations/{migration.id}/monitor")
         assert response.status_code == 200
         snapshots = response.json()
         assert len(snapshots) == 3
-        # Newest first.
         ts = [s["created_at"] for s in snapshots]
         assert ts == sorted(ts, reverse=True)

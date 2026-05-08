@@ -17,6 +17,7 @@ import pytest
 from src.config import settings as env_settings
 from src.services.cdc.apply import apply_changes
 from src.services.cdc.queue import Change
+pytestmark = pytest.mark.integration
 
 
 # ─── Fixtures ────────────────────────────────────────────────────────

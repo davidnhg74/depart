@@ -13,6 +13,7 @@ from src.config import settings as env_settings
 from src.models import MigrationRecord, MigrationSchedule
 from src.services import scheduler_service
 from src.utils.time import utc_now
+pytestmark = pytest.mark.integration
 
 
 @pytest.fixture

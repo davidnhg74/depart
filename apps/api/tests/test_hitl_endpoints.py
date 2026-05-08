@@ -1,9 +1,14 @@
 """
 Tests for Phase 3.3 HITL Endpoints.
 Tests workflow, permission analysis, and benchmark endpoints.
+
+These tests require a running Postgres (make up && alembic upgrade head).
+Run with: pytest -m integration
 """
 
 import pytest
+
+pytestmark = pytest.mark.integration
 import json
 import uuid
 from fastapi.testclient import TestClient

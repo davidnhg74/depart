@@ -39,6 +39,7 @@ from src.models import (
 )
 from src.utils.time import utc_now
 
+pytestmark = pytest.mark.integration
 
 client = TestClient(app)
 

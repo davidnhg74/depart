@@ -834,3 +834,50 @@ export async function previewMasking(
   );
   return data;
 }
+
+// ─── Layer 9: Cutover readiness ──────────────────────────────────────────────
+
+export interface ReadinessSignal {
+  layer: string;
+  label: string;
+  status: 'ok' | 'advisory' | 'blocking' | 'not_run';
+  summary: string;
+  detail?: string | null;
+}
+
+export interface CutoverReadinessResponse {
+  snapshot_id: string;
+  ready_to_cut: boolean;
+  score: number;
+  blocking_count: number;
+  advisory_count: number;
+  not_run_count: number;
+  signals: ReadinessSignal[];
+}
+
+export interface CutoverReadinessItem {
+  snapshot_id: string;
+  created_at: string;
+  ready_to_cut: boolean;
+  score: number;
+  blocking_count: number;
+  advisory_count: number;
+}
+
+export async function runCutoverReadiness(
+  id: string,
+): Promise<CutoverReadinessResponse> {
+  const { data } = await api.post<CutoverReadinessResponse>(
+    `/api/v1/migrations/${id}/cutover-readiness`,
+  );
+  return data;
+}
+
+export async function listCutoverReadiness(
+  id: string,
+): Promise<CutoverReadinessItem[]> {
+  const { data } = await api.get<CutoverReadinessItem[]>(
+    `/api/v1/migrations/${id}/cutover-readiness`,
+  );
+  return data;
+}

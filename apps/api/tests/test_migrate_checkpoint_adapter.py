@@ -19,6 +19,7 @@ from src.migrate.checkpoint_adapter import (
 )
 from src.migrate.planner import TableRef
 from src.models import MigrationCheckpointRecord, MigrationRecord
+pytestmark = pytest.mark.integration
 
 
 # ─── Pure encoding/decoding ──────────────────────────────────────────────────

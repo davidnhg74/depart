@@ -1,6 +1,10 @@
 """
 Tests for migration checkpoint manager.
 Validates save/resume logic and progress tracking.
+
+Sqlite can't host this schema (ARRAY(Float), UUID/JSONB columns).
+Requires a running Postgres: make up && alembic upgrade head.
+Run with: pytest -m integration
 """
 
 import pytest
@@ -11,6 +15,8 @@ import uuid
 from src.db import Base
 from src.models import MigrationRecord, MigrationCheckpointRecord
 from src.migration.checkpoint import CheckpointManager
+
+pytestmark = pytest.mark.integration
 
 
 @pytest.fixture

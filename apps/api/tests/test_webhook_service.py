@@ -25,6 +25,7 @@ from sqlalchemy.orm import sessionmaker
 from src.config import settings as env_settings
 from src.models import WebhookEndpoint
 from src.services import webhook_service
+pytestmark = pytest.mark.integration
 
 
 @pytest.fixture

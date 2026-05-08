@@ -18,6 +18,7 @@ from sqlalchemy.orm import sessionmaker
 from src.config import settings as env_settings
 from src.main import app
 from src.models import IdentityProvider, User
+pytestmark = pytest.mark.integration
 
 
 client = TestClient(app)

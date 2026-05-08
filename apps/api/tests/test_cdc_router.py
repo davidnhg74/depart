@@ -24,6 +24,7 @@ from src.models import (
 )
 from src.services.settings_service import set_license_jwt
 
+pytestmark = pytest.mark.integration
 
 client = TestClient(app)
 

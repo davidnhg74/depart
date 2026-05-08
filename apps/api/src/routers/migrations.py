@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from dataclasses import asdict
 from datetime import datetime
 from typing import List, Optional
 
@@ -36,9 +37,16 @@ from sqlalchemy.orm import Session
 
 from ..auth.roles import require_role
 from ..db import get_db
-from ..models import DataSampleResult, MigrationCheckpointRecord, MigrationRecord, ProductionMonitorSnapshot
+from ..models import (
+    CutoverReadinessSnapshot,
+    DataSampleResult,
+    MigrationCheckpointRecord,
+    MigrationRecord,
+    ProductionMonitorSnapshot,
+)
 from ..services.audit import log_event
 from ..services.anomaly_service import anomaly_check_record
+from ..services.cutover_service import assess_cutover_readiness
 from ..services.monitor_service import monitor_migration
 from ..services.sampler_service import sample_migration
 from ..services.migration_runner import (
@@ -837,6 +845,106 @@ def progress(
         .all()
     )
     return _to_detail(record, checkpoints)
+
+
+# ─── Layer 9: Cutover readiness ───────────────────────────────────────────────
+
+
+class ReadinessSignalItem(BaseModel):
+    layer: str
+    label: str
+    status: str  # ok | advisory | blocking | not_run
+    summary: str
+    detail: Optional[str] = None
+
+
+class CutoverReadinessResponse(BaseModel):
+    """Layer 9 cutover readiness assessment."""
+
+    snapshot_id: str
+    ready_to_cut: bool
+    score: int            # 0–100
+    blocking_count: int
+    advisory_count: int
+    not_run_count: int
+    signals: List[ReadinessSignalItem]
+
+
+class CutoverReadinessItem(BaseModel):
+    """Summary row for the history list."""
+
+    snapshot_id: str
+    created_at: str
+    ready_to_cut: bool
+    score: int
+    blocking_count: int
+    advisory_count: int
+
+
+@router.post(
+    "/{migration_id}/cutover-readiness",
+    response_model=CutoverReadinessResponse,
+)
+def run_cutover_readiness(
+    migration_id: str,
+    db: Session = Depends(get_db),
+    caller=Depends(require_role("admin", "operator")),
+) -> CutoverReadinessResponse:
+    """Run Layer 9 cutover readiness assessment.
+
+    Aggregates the latest Layer 6 (anomaly), Layer 7 (monitor), and
+    Layer 8 (sampler) results together with migration status and CDC lag
+    to produce a go/no-go verdict for cutting over production traffic
+    from Oracle to PostgreSQL. Safe to call multiple times; each call
+    persists a new snapshot."""
+    record = _load_or_404_for_user(db, migration_id, caller)
+    try:
+        readiness, snap = assess_cutover_readiness(record, db)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"cutover readiness check failed: {str(exc).split(chr(10))[0][:300]}",
+        )
+    return CutoverReadinessResponse(
+        snapshot_id=str(snap.id),
+        ready_to_cut=readiness.ready_to_cut,
+        score=readiness.score,
+        blocking_count=readiness.blocking_count,
+        advisory_count=readiness.advisory_count,
+        not_run_count=readiness.not_run_count,
+        signals=[ReadinessSignalItem(**asdict(s)) for s in readiness.signals],
+    )
+
+
+@router.get(
+    "/{migration_id}/cutover-readiness",
+    response_model=List[CutoverReadinessItem],
+)
+def list_cutover_readiness(
+    migration_id: str,
+    db: Session = Depends(get_db),
+    caller=Depends(require_role("admin", "operator", "viewer")),
+) -> List[CutoverReadinessItem]:
+    """Return the 10 most recent cutover readiness assessments for a migration."""
+    record = _load_or_404_for_user(db, migration_id, caller)
+    snaps = (
+        db.query(CutoverReadinessSnapshot)
+        .filter(CutoverReadinessSnapshot.migration_id == record.id)
+        .order_by(CutoverReadinessSnapshot.created_at.desc())
+        .limit(10)
+        .all()
+    )
+    return [
+        CutoverReadinessItem(
+            snapshot_id=str(s.id),
+            created_at=s.created_at.isoformat(),
+            ready_to_cut=s.ready_to_cut,
+            score=s.score,
+            blocking_count=s.blocking_count,
+            advisory_count=s.advisory_count,
+        )
+        for s in snaps
+    ]
 
 
 # ─── Internals ───────────────────────────────────────────────────────────────
