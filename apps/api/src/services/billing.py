@@ -22,6 +22,16 @@ except ImportError:
 
 
 PLAN_LIMITS = {
+    "pilot": {
+        "databases": 1,
+        "migrations_per_month": 1,
+        "llm_per_month": 0,
+        # Pilot is a permanent free tier — no expiry timer.
+        # Schema introspection and DDL preview only; data movement blocked at
+        # the run endpoint.
+        "troubleshoot_max_upload_bytes": 0,
+        "troubleshoot_max_calls_per_day": 0,
+    },
     "trial": {
         "databases": 1,
         "migrations_per_month": 3,

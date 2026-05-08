@@ -62,6 +62,7 @@ class UsageResponse(BaseModel):
 def get_plan_limits(plan: str) -> dict:
     """Get limits for a plan tier."""
     limits = {
+        "pilot": {"databases": 1, "migrations_per_month": 1, "llm_per_month": 0},
         "trial": {"databases": 1, "migrations_per_month": 3, "llm_per_month": 10},
         "starter": {"databases": 5, "migrations_per_month": 25, "llm_per_month": 100},
         "professional": {"databases": 20, "migrations_per_month": 100, "llm_per_month": 500},

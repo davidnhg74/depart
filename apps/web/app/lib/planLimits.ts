@@ -14,6 +14,11 @@ export interface Limits {
 }
 
 export const PLAN_LIMITS: Record<NonNullable<User['plan']>, Limits> = {
+  pilot: {
+    databases: 1,
+    migrations_per_month: 1,
+    llm_per_month: 0,
+  },
   trial: {
     databases: 1,
     migrations_per_month: 3,

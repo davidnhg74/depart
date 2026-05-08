@@ -231,6 +231,7 @@ class BenchmarkCapture(Base):
 
 
 class PlanEnum(str, enum.Enum):
+    PILOT = "pilot"
     TRIAL = "trial"
     STARTER = "starter"
     PROFESSIONAL = "professional"

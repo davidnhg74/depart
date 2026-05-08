@@ -44,6 +44,7 @@ from ..models import (
     DataSampleResult,
     MigrationCheckpointRecord,
     MigrationRecord,
+    PlanEnum,
     ProductionMonitorSnapshot,
 )
 from ..services.audit import log_event
@@ -353,6 +354,15 @@ async def run(
     re-run of an already-running migration and let the checkpoint-
     based resume logic handle it — pressing 'Run' twice is a UX
     hazard, not a correctness one."""
+    if caller is not None and getattr(caller, "plan", None) == PlanEnum.PILOT:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Pilot plan includes schema analysis and DDL preview only. "
+                "Upgrade to Starter to run data migrations."
+            ),
+        )
+
     record = _load_or_404_for_user(db, migration_id, caller)
 
     # Flip to pending→in_progress before the background task starts so

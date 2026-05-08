@@ -14,7 +14,7 @@ export interface User {
   // either build.
   role?: UserRole;
   is_active?: boolean;
-  plan?: 'trial' | 'starter' | 'professional' | 'enterprise';
+  plan?: 'pilot' | 'trial' | 'starter' | 'professional' | 'enterprise';
   email_verified?: boolean;
   created_at?: string;
   databases_used?: number;
