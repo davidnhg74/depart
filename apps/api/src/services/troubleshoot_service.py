@@ -214,11 +214,10 @@ def analyze_logs(
     truncated = smart_truncate(raw_logs)
     anon = anonymize(truncated.text)
 
-    if ai_client is None:
-        ai_client = AIClient.smart(feature="error_diagnosis")
-
     used_ai = True
     try:
+        if ai_client is None:
+            ai_client = AIClient.smart(feature="error_diagnosis")
         raw = ai_client.complete_json(
             system=_SYSTEM_PROMPT,
             user=_build_user_prompt(anon.redacted_text, context, stage),
