@@ -36,9 +36,10 @@ from sqlalchemy.orm import Session
 
 from ..auth.roles import require_role
 from ..db import get_db
-from ..models import MigrationCheckpointRecord, MigrationRecord
+from ..models import MigrationCheckpointRecord, MigrationRecord, ProductionMonitorSnapshot
 from ..services.audit import log_event
 from ..services.anomaly_service import anomaly_check_record
+from ..services.monitor_service import monitor_migration
 from ..services.migration_runner import (
     advise_record,
     dry_run_plan,
@@ -619,6 +620,95 @@ def check_anomalies(
         analysis_id=result.analysis_id,
         tables_sampled=result.tables_sampled,
     )
+
+
+class MonitorFindingItem(BaseModel):
+    severity: str
+    check_name: str
+    table: Optional[str]
+    message: str
+    recommended_action: str
+
+
+class MonitorSnapshotItem(BaseModel):
+    snapshot_id: str
+    created_at: str
+    overall_severity: str
+    tables_checked: int
+    findings: List[MonitorFindingItem]
+
+
+class MonitorResponse(BaseModel):
+    """Layer 7 production monitor report."""
+
+    overall_severity: str  # "clean" | "info" | "warning" | "error"
+    findings: List[MonitorFindingItem]
+    snapshot_id: str
+    tables_checked: int
+
+
+@router.post("/{migration_id}/monitor", response_model=MonitorResponse)
+def run_monitor_check(
+    migration_id: str,
+    db: Session = Depends(get_db),
+    caller=Depends(require_role("admin", "operator")),
+) -> MonitorResponse:
+    """Run Layer 7 production monitor against the target database.
+
+    Collects row counts, dead-tuple bloat, and CDC lag. Compares row
+    counts against the previous snapshot to detect drift. Persists a
+    new snapshot on every call so the next call has an updated baseline.
+
+    Safe to call on any migration with a target_url — not restricted
+    to completed status so operators can monitor in-progress migrations too."""
+    record = _load_or_404_for_user(db, migration_id, caller)
+    if not record.target_url:
+        raise HTTPException(
+            status_code=400,
+            detail="Migration has no target_url — cannot run production monitor.",
+        )
+    try:
+        result = monitor_migration(record, db)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"monitor failed: {str(exc).split(chr(10))[0][:300]}",
+        )
+    return MonitorResponse(
+        overall_severity=result.overall_severity,
+        findings=[MonitorFindingItem(**f.to_dict()) for f in result.findings],
+        snapshot_id=result.snapshot_id,
+        tables_checked=result.tables_checked,
+    )
+
+
+@router.get("/{migration_id}/monitor", response_model=List[MonitorSnapshotItem])
+def list_monitor_snapshots(
+    migration_id: str,
+    db: Session = Depends(get_db),
+    caller=Depends(require_role("admin", "operator", "viewer")),
+) -> List[MonitorSnapshotItem]:
+    """Return the 10 most recent production monitor snapshots for a migration."""
+    record = _load_or_404_for_user(db, migration_id, caller)
+    snapshots = (
+        db.query(ProductionMonitorSnapshot)
+        .filter(ProductionMonitorSnapshot.migration_id == record.id)
+        .order_by(ProductionMonitorSnapshot.created_at.desc())
+        .limit(10)
+        .all()
+    )
+    return [
+        MonitorSnapshotItem(
+            snapshot_id=str(s.id),
+            created_at=s.created_at.isoformat(),
+            overall_severity=s.overall_severity,
+            tables_checked=s.tables_checked,
+            findings=[MonitorFindingItem(**f) for f in (s.findings or [])],
+        )
+        for s in snapshots
+    ]
 
 
 @router.get("/{migration_id}/progress", response_model=MigrationDetail)

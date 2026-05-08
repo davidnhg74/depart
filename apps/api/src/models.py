@@ -717,6 +717,35 @@ class AnomalyAnalysis(Base):
     tables_sampled = Column(Integer, nullable=False, default=0)
 
 
+class ProductionMonitorSnapshot(Base):
+    """Layer 7 — production monitor snapshot.
+
+    One row per monitoring invocation. Stores live row counts per table
+    (for drift detection on the next run) plus any findings from the
+    three checks: row_drift, dead_tuple_bloat, cdc_lag.
+    """
+
+    __tablename__ = "production_monitor_snapshots"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    migration_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("migrations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True
+    )
+    created_at = Column(
+        DateTime(timezone=True), default=utc_now, nullable=False, index=True
+    )
+    table_row_counts = Column(JSONB, nullable=False, default=dict)
+    findings = Column(JSONB, nullable=False, default=list)
+    overall_severity = Column(String(16), nullable=False)  # clean|info|warning|error
+    tables_checked = Column(Integer, nullable=False, default=0)
+
+
 # Pydantic response models (not ORM)
 
 
