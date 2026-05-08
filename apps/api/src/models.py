@@ -299,7 +299,6 @@ class User(Base):
     llm_conversions_this_month = Column(Integer, default=0, nullable=False)
     usage_reset_at = Column(DateTime, default=utc_now, nullable=False)
 
-    is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=utc_now, nullable=False, index=True)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
 
