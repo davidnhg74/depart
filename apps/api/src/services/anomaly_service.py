@@ -29,6 +29,7 @@ from ..migrate.anomaly import (
     sample_table_distributions,
     _MAX_TABLES,
 )
+from ..migrate.temporal import check_temporal_table
 from ..models import AnomalyAnalysis, MigrationRecord
 from ..utils.time import utc_now
 
@@ -82,6 +83,7 @@ def anomaly_check_record(record: MigrationRecord, db: Session) -> AnomalyResult:
     try:
         tables = _resolve_tables(dst, target_schema, record)
         distributions = _sample_all(dst, target_schema, tables, record)
+        temporal_findings = _collect_temporal(dst, target_schema, tables)
     finally:
         dst.close()
         engine.dispose()
@@ -106,6 +108,8 @@ def anomaly_check_record(record: MigrationRecord, db: Session) -> AnomalyResult:
         )
         findings = rule_based_findings(distributions)
 
+    # Temporal findings (deterministic, Layer 5) always included.
+    findings = temporal_findings + findings
     sev = overall_severity(findings)
     analysis_id = str(uuid.uuid4())
 
@@ -209,6 +213,20 @@ def _sample_all(
         except Exception as exc:
             logger.warning("anomaly: failed to sample %s: %s", table, exc)
     return distributions
+
+
+def _collect_temporal(
+    session: Session,
+    schema: str,
+    tables: List[str],
+) -> List[AnomalyFinding]:
+    findings: List[AnomalyFinding] = []
+    for table in tables:
+        try:
+            findings.extend(check_temporal_table(session, schema, table))
+        except Exception as exc:
+            logger.warning("temporal: failed to check %s: %s", table, exc)
+    return findings
 
 
 def _parse_ai_response(raw: Any) -> List[AnomalyFinding]:
