@@ -42,7 +42,7 @@ class ConnectionConfig(BaseModel):
 class SecureCredentialManager:
     """Encrypt/decrypt connection strings at rest."""
 
-    def __init__(self, encryption_key: Optional[str] = None):
+    def __init__(self, encryption_key=None):
         """
         Initialize credential manager.
 
@@ -50,18 +50,16 @@ class SecureCredentialManager:
             encryption_key: Fernet key for encryption (from environment or Vault)
                           If None, generates new key (for development only)
         """
-        if encryption_key is None:
-            # Development only: generate new key
-            encryption_key = Fernet.generate_key()
+        raw = encryption_key
+        if raw is None:
+            raw = Fernet.generate_key()
             logger.warning(
                 "No encryption key provided. Generated new key (dev mode only). "
                 "For production, set ENCRYPTION_KEY environment variable."
             )
-
-        if isinstance(encryption_key, str):
-            encryption_key = encryption_key.encode()
-
-        self.cipher = Fernet(encryption_key)
+        if isinstance(raw, str):
+            raw = raw.encode()
+        self.cipher = Fernet(raw)
 
     def encrypt_connection_string(self, connection_string: str) -> str:
         """
