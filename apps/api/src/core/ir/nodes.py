@@ -283,6 +283,10 @@ TIER_FOR_TAG: dict = {
     ConstructTag.DBMS_OUTPUT: Tier.A,
     ConstructTag.PERCENT_TYPE: Tier.A,
     ConstructTag.RAISE_APPLICATION_ERROR: Tier.A,
+    # Tier A (deterministic, low risk) — continued
+    ConstructTag.NVL: Tier.A,
+    ConstructTag.DECODE: Tier.A,
+    ConstructTag.INTERVAL: Tier.A,
     # Tier B (mechanical but context-dependent)
     ConstructTag.CONNECT_BY: Tier.B,
     ConstructTag.MERGE: Tier.B,

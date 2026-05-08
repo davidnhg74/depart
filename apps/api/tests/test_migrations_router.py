@@ -308,8 +308,10 @@ def two_users_with_auth(monkeypatch):
     Returns a helper that swaps which user is "logged in" for the
     next request."""
     from src.config import settings as cfg
+    import src.auth.roles as _roles_mod
 
     monkeypatch.setattr(cfg, "enable_self_hosted_auth", True)
+    monkeypatch.setattr(_roles_mod.settings, "enable_self_hosted_auth", True)
 
     engine = create_engine(env_settings.database_url)
     S = sessionmaker(bind=engine)
