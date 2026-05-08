@@ -31,7 +31,7 @@ from .migration import CheckpointManager
 from .connectors import get_connection_manager
 from .cost_calculator import CostCalculator, DatabaseSize, DeploymentType
 from .analyzers.permission_analyzer import PermissionAnalyzer
-from .analyzers.benchmark_analyzer import BenchmarkComparator
+from .analyzers.benchmark_analyzer import BenchmarkCapture, BenchmarkComparator
 from .llm.client import LLMClient
 from .models import MigrationWorkflow, BenchmarkCapture as BenchmarkCaptureModel, MigrationReport
 from .connectors.connection_pool import get_connection_pool
@@ -688,10 +688,11 @@ async def analyze_permissions(request: PermissionAnalysisRequest, db: Session = 
         if request.oracle_privileges_json:
             result = analyzer.analyze_from_json(request.oracle_privileges_json)
         elif request.oracle_connection_id:
-            # TODO: Get connection from connection manager
-            raise HTTPException(
-                status_code=501, detail="Direct connection analysis not yet implemented"
-            )
+            manager = get_connection_manager()
+            connector = manager.get_connector(request.oracle_connection_id)
+            if not connector:
+                raise HTTPException(status_code=404, detail="Oracle connection not found")
+            result = analyzer.analyze_from_connector(connector)
         else:
             raise HTTPException(
                 status_code=400,
@@ -1100,8 +1101,25 @@ async def check_connection_health(connection_id: str):
 async def capture_oracle_benchmark(request: BenchmarkCaptureRequest, db: Session = Depends(get_db)):
     """Capture Oracle performance baseline from v$sql."""
     try:
-        # TODO: Get Oracle connection from connection manager
-        raise HTTPException(status_code=501, detail="Oracle benchmark capture not yet implemented")
+        if not request.oracle_connection_id:
+            raise HTTPException(status_code=400, detail="oracle_connection_id required")
+        manager = get_connection_manager()
+        connector = manager.get_connector(request.oracle_connection_id)
+        if not connector:
+            raise HTTPException(status_code=404, detail="Oracle connection not found")
+        baseline = BenchmarkCapture.capture_oracle_baseline(connector, request.migration_id)
+        import dataclasses
+        data = dataclasses.asdict(baseline)
+        capture = BenchmarkCaptureModel(
+            migration_id=uuid.UUID(request.migration_id) if request.migration_id else None,
+            db_type="oracle",
+            data=data,
+        )
+        db.add(capture)
+        db.commit()
+        return {"id": str(capture.id), "captured_at": baseline.captured_at,
+                "top_queries_count": len(baseline.top_queries),
+                "table_stats_count": len(baseline.table_stats)}
     except HTTPException:
         raise
     except Exception as e:
@@ -1115,10 +1133,25 @@ async def capture_postgres_benchmark(
 ):
     """Capture PostgreSQL performance metrics from pg_stat_statements."""
     try:
-        # TODO: Get PostgreSQL connection from connection manager
-        raise HTTPException(
-            status_code=501, detail="PostgreSQL benchmark capture not yet implemented"
+        if not request.postgres_connection_id:
+            raise HTTPException(status_code=400, detail="postgres_connection_id required")
+        manager = get_connection_manager()
+        connector = manager.get_connector(request.postgres_connection_id)
+        if not connector:
+            raise HTTPException(status_code=404, detail="PostgreSQL connection not found")
+        metrics = BenchmarkCapture.capture_postgres_metrics(connector, request.migration_id)
+        import dataclasses
+        data = dataclasses.asdict(metrics)
+        capture = BenchmarkCaptureModel(
+            migration_id=uuid.UUID(request.migration_id) if request.migration_id else None,
+            db_type="postgres",
+            data=data,
         )
+        db.add(capture)
+        db.commit()
+        return {"id": str(capture.id), "captured_at": metrics.captured_at,
+                "top_queries_count": len(metrics.top_queries),
+                "table_stats_count": len(metrics.table_stats)}
     except HTTPException:
         raise
     except Exception as e:
