@@ -394,6 +394,31 @@ export async function deleteMigration(id: string): Promise<void> {
 }
 
 
+export interface AnomalyFindingItem {
+  severity: string;
+  table: string;
+  column: string | null;
+  anomaly_type: string;
+  message: string;
+  recommended_action: string;
+}
+
+export interface AnomalyCheckResponse {
+  overall_severity: string;
+  findings: AnomalyFindingItem[];
+  used_ai: boolean;
+  analysis_id: string;
+  tables_sampled: number;
+}
+
+export async function checkAnomalies(id: string): Promise<AnomalyCheckResponse> {
+  const { data } = await api.post<AnomalyCheckResponse>(
+    `/api/v1/migrations/${id}/check-anomalies`,
+  );
+  return data;
+}
+
+
 export interface ConnectionTestResult {
   ok: boolean;
   dialect: 'oracle' | 'postgres' | null;

@@ -33,6 +33,7 @@ import {
 import { useAuthStore } from '@/app/store/authStore';
 
 import { StatusBadge } from '../StatusBadge';
+import AnomalyPanel from './AnomalyPanel';
 import MaskingPanel from './MaskingPanel';
 import SchedulePanel from './SchedulePanel';
 
@@ -285,6 +286,7 @@ function DetailContent() {
         <ConfigPanel migration={migration} />
         <MaskingPanel migrationId={migration.id} />
         <SchedulePanel migrationId={migration.id} />
+        <AnomalyPanel migrationId={migration.id} status={migration.status} />
         <CheckpointsPanel checkpoints={migration.checkpoints} />
       </div>
     </main>
