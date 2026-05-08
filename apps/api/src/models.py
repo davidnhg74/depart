@@ -153,6 +153,13 @@ class MigrationRecord(Base):
     # "atomic" = batch-level fail-fast (stricter audit semantics).
     # Enforced via CHECK constraint at the DB level.
     cdc_apply_mode = Column(String(16), nullable=False, default="per_row")
+    # Set after a successful Layer 6 anomaly check. Nullable: check is
+    # opt-in and may not have run yet.
+    anomaly_analysis_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("anomaly_analyses.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
     @property
     def elapsed_seconds(self) -> int:
@@ -682,6 +689,32 @@ class CorpusEntry(Base):
     fix_pattern = Column(String(255), nullable=True)
     outcome_thumbs = Column(SmallInteger, nullable=True)
     source_feature = Column(String(64), nullable=False)
+
+
+class AnomalyAnalysis(Base):
+    """Layer 6 — AI anomaly detection results for a completed migration.
+
+    One row per check invocation. The FK on `migrations.anomaly_analysis_id`
+    points at the most recent check for that migration; older checks remain
+    in this table for audit purposes.
+    """
+
+    __tablename__ = "anomaly_analyses"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True
+    )
+    migration_id = Column(
+        UUID(as_uuid=True), ForeignKey("migrations.id"), nullable=False, index=True
+    )
+    created_at = Column(
+        DateTime(timezone=True), default=utc_now, nullable=False, index=True
+    )
+    findings = Column(JSONB, nullable=False, default=list)
+    overall_severity = Column(String(16), nullable=False)  # clean|info|warning|error
+    used_ai = Column(Boolean, nullable=False, default=False)
+    tables_sampled = Column(Integer, nullable=False, default=0)
 
 
 # Pydantic response models (not ORM)

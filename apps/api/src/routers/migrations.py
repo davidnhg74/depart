@@ -38,6 +38,7 @@ from ..auth.roles import require_role
 from ..db import get_db
 from ..models import MigrationCheckpointRecord, MigrationRecord
 from ..services.audit import log_event
+from ..services.anomaly_service import anomaly_check_record
 from ..services.migration_runner import (
     advise_record,
     dry_run_plan,
@@ -555,6 +556,68 @@ def quality_check(
     return QualityCheckResponse(
         overall_severity=result["overall_severity"],
         findings=[QualityFindingItem(**f) for f in result["findings"]],
+    )
+
+
+class AnomalyFindingItem(BaseModel):
+    severity: str
+    table: str
+    column: Optional[str]
+    anomaly_type: str
+    message: str
+    recommended_action: str
+
+
+class AnomalyCheckResponse(BaseModel):
+    """Layer 6 AI anomaly detection report."""
+
+    overall_severity: str  # "clean" | "info" | "warning" | "error"
+    findings: List[AnomalyFindingItem]
+    used_ai: bool
+    analysis_id: str
+    tables_sampled: int
+
+
+@router.post(
+    "/{migration_id}/check-anomalies", response_model=AnomalyCheckResponse
+)
+def check_anomalies(
+    migration_id: str,
+    db: Session = Depends(get_db),
+    caller=Depends(require_role("admin", "operator")),
+) -> AnomalyCheckResponse:
+    """Run Layer 6 AI anomaly detection against the target database.
+
+    Samples post-migration data distributions and uses Claude to surface
+    anomalies worth reviewing before cutover. Falls back to rule-based
+    checks when ANTHROPIC_API_KEY is not configured.
+
+    Safe to call multiple times — each call writes a new AnomalyAnalysis
+    row and updates migrations.anomaly_analysis_id to the latest."""
+    record = _load_or_404_for_user(db, migration_id, caller)
+    if record.status not in ("completed", "completed_with_warnings"):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Anomaly check requires a completed migration; "
+                f"current status is '{record.status}'."
+            ),
+        )
+    try:
+        result = anomaly_check_record(record, db)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:  # noqa: BLE001 — connect surface
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"anomaly check failed: {str(exc).split(chr(10))[0][:300]}",
+        )
+    return AnomalyCheckResponse(
+        overall_severity=result.overall_severity,
+        findings=[AnomalyFindingItem(**f.to_dict()) for f in result.findings],
+        used_ai=result.used_ai,
+        analysis_id=result.analysis_id,
+        tables_sampled=result.tables_sampled,
     )
 
 
