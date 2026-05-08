@@ -84,8 +84,8 @@ export default function PricingPage() {
             {/* Pro — highlighted */}
             <div className="bg-purple-600 text-white border-2 border-purple-600 rounded-lg p-8 flex flex-col shadow-lg md:scale-105">
               <h3 className="text-2xl font-bold">Pro</h3>
-              <div className="text-3xl font-bold my-4">$25k–$75k</div>
-              <p className="text-purple-100 mb-6">Per-project license. 90 days. Offline.</p>
+              <div className="text-3xl font-bold my-4">$75k–$150k<span className="text-lg font-normal opacity-80">/yr</span></div>
+              <p className="text-purple-100 mb-6">Annual site license. Unlimited projects. Offline.</p>
               <ul className="space-y-3 mb-8 text-sm flex-grow">
                 <li className="flex items-start gap-3">
                   <span className="font-bold flex-shrink-0 mt-0.5">✓</span>
@@ -162,9 +162,9 @@ export default function PricingPage() {
 
           <p className="mx-auto mt-12 max-w-3xl text-center text-sm text-gray-500">
             Pro and Enterprise ship as signed offline license files (JWT). Verified locally
-            against a bundled public key, valid for the stated term, no network check
-            required. A single successful migration typically recoups its license cost in
-            Oracle savings within 90 days.
+            against a bundled public key — no network check required. Annual site licenses
+            cover unlimited projects across your organization. A typical migration recoups
+            its annual license cost in avoided Oracle support fees within the first quarter.
           </p>
         </div>
       </section>
