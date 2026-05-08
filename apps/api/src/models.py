@@ -806,6 +806,38 @@ class CutoverReadinessSnapshot(Base):
     score = Column(Integer, nullable=False)  # 0–100
 
 
+class CodeConversionRun(Base):
+    """Layer 11 — PL/SQL → PL/pgSQL conversion run.
+
+    One row per conversion invocation. Stores per-object results (oracle
+    source, converted PL/pgSQL, confidence rating, review notes) in JSONB
+    so operators can review, copy, and apply the converted code.
+    """
+
+    __tablename__ = "code_conversion_runs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    migration_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("migrations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True
+    )
+    created_at = Column(
+        DateTime(timezone=True), default=utc_now, nullable=False, index=True
+    )
+    objects_found = Column(Integer, nullable=False, default=0)       # total in schema
+    objects_attempted = Column(Integer, nullable=False, default=0)   # sent to Claude
+    objects_converted = Column(Integer, nullable=False, default=0)   # success
+    objects_failed = Column(Integer, nullable=False, default=0)      # Claude error
+    # Array of per-object dicts: {object_type, object_name, oracle_source,
+    # converted_code, confidence, review_notes, patterns_applied, error}
+    results = Column(JSONB, nullable=False, default=list)
+
+
 class CompatScanSnapshot(Base):
     """Layer 10 — application SQL compatibility scan snapshot.
 

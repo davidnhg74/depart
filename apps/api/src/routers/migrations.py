@@ -38,6 +38,7 @@ from sqlalchemy.orm import Session
 from ..auth.roles import require_role
 from ..db import get_db
 from ..models import (
+    CodeConversionRun,
     CompatScanSnapshot,
     CutoverReadinessSnapshot,
     DataSampleResult,
@@ -49,6 +50,7 @@ from ..services.audit import log_event
 from ..services.anomaly_service import anomaly_check_record
 from ..services.cutover_service import assess_cutover_readiness
 from ..services.compat_service import scan_compat
+from ..services.plsql_service import run_plsql_conversion
 from ..services.monitor_service import monitor_migration
 from ..services.sampler_service import sample_migration
 from ..services.migration_runner import (
@@ -1062,6 +1064,154 @@ def list_compat_scans(
         )
         for s in snaps
     ]
+
+
+# ─── Layer 11: PL/SQL → PL/pgSQL code conversion ─────────────────────────────
+
+
+class ConversionObjectResult(BaseModel):
+    object_type: str
+    object_name: str
+    oracle_source: str
+    converted_code: Optional[str] = None
+    confidence: str = "low"    # high | medium | low
+    review_notes: str = ""
+    patterns_applied: List[str] = []
+    error: Optional[str] = None
+
+
+class CodeConversionResponse(BaseModel):
+    """Layer 11 PL/SQL conversion run summary."""
+
+    run_id: str
+    objects_found: int       # total code objects in schema
+    objects_attempted: int   # how many were sent to Claude (capped by limit)
+    objects_converted: int   # successfully converted
+    objects_failed: int      # Claude returned error
+    results: List[ConversionObjectResult]
+
+
+class CodeConversionRunItem(BaseModel):
+    """Summary row for the history list."""
+
+    run_id: str
+    created_at: str
+    objects_found: int
+    objects_attempted: int
+    objects_converted: int
+    objects_failed: int
+
+
+@router.post(
+    "/{migration_id}/convert-code",
+    response_model=CodeConversionResponse,
+)
+def run_code_conversion(
+    migration_id: str,
+    limit: int = 10,
+    db: Session = Depends(get_db),
+    caller=Depends(require_role("admin", "operator")),
+) -> CodeConversionResponse:
+    """Run Layer 11 PL/SQL → PL/pgSQL code conversion via Claude.
+
+    Connects to the Oracle source schema, fetches stored procedures,
+    functions, triggers, and packages, and converts each to PostgreSQL
+    PL/pgSQL using Claude. Persists a run snapshot with per-object
+    results (converted code, confidence rating, review notes).
+
+    Query param:
+      limit (int, default 10, max 50) — number of objects to convert per run.
+      Large schemas should be converted in batches.
+
+    Requires a configured Anthropic API key (Settings → AI Configuration).
+    Returns 412 if no API key is configured."""
+    limit = min(max(1, limit), 50)
+    record = _load_or_404_for_user(db, migration_id, caller)
+    try:
+        results, run = run_plsql_conversion(record, db, limit=limit)
+    except ValueError as exc:
+        code = (
+            status.HTTP_412_PRECONDITION_FAILED
+            if "Anthropic API key" in str(exc)
+            else status.HTTP_400_BAD_REQUEST
+        )
+        raise HTTPException(status_code=code, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"code conversion failed: {str(exc).split(chr(10))[0][:300]}",
+        )
+    return CodeConversionResponse(
+        run_id=str(run.id),
+        objects_found=run.objects_found,
+        objects_attempted=run.objects_attempted,
+        objects_converted=run.objects_converted,
+        objects_failed=run.objects_failed,
+        results=[ConversionObjectResult(**r) for r in results],
+    )
+
+
+@router.get(
+    "/{migration_id}/convert-code",
+    response_model=List[CodeConversionRunItem],
+)
+def list_code_conversion_runs(
+    migration_id: str,
+    db: Session = Depends(get_db),
+    caller=Depends(require_role("admin", "operator", "viewer")),
+) -> List[CodeConversionRunItem]:
+    """Return the 10 most recent PL/SQL conversion runs for a migration."""
+    record = _load_or_404_for_user(db, migration_id, caller)
+    runs = (
+        db.query(CodeConversionRun)
+        .filter(CodeConversionRun.migration_id == record.id)
+        .order_by(CodeConversionRun.created_at.desc())
+        .limit(10)
+        .all()
+    )
+    return [
+        CodeConversionRunItem(
+            run_id=str(r.id),
+            created_at=r.created_at.isoformat(),
+            objects_found=r.objects_found,
+            objects_attempted=r.objects_attempted,
+            objects_converted=r.objects_converted,
+            objects_failed=r.objects_failed,
+        )
+        for r in runs
+    ]
+
+
+@router.get(
+    "/{migration_id}/convert-code/{run_id}",
+    response_model=CodeConversionResponse,
+)
+def get_code_conversion_run(
+    migration_id: str,
+    run_id: str,
+    db: Session = Depends(get_db),
+    caller=Depends(require_role("admin", "operator", "viewer")),
+) -> CodeConversionResponse:
+    """Return full per-object results for a specific PL/SQL conversion run."""
+    record = _load_or_404_for_user(db, migration_id, caller)
+    try:
+        uid = uuid.UUID(run_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid run_id")
+    run = db.query(CodeConversionRun).filter(
+        CodeConversionRun.id == uid,
+        CodeConversionRun.migration_id == record.id,
+    ).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Conversion run not found")
+    return CodeConversionResponse(
+        run_id=str(run.id),
+        objects_found=run.objects_found,
+        objects_attempted=run.objects_attempted,
+        objects_converted=run.objects_converted,
+        objects_failed=run.objects_failed,
+        results=[ConversionObjectResult(**r) for r in (run.results or [])],
+    )
 
 
 # ─── Internals ───────────────────────────────────────────────────────────────

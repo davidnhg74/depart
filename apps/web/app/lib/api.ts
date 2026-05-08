@@ -925,3 +925,64 @@ export async function listCompatScans(id: string): Promise<CompatScanItem[]> {
   );
   return data;
 }
+
+
+// ─── Layer 11: PL/SQL → PL/pgSQL Code Conversion ─────────────────────────────
+
+export interface ConversionObjectResult {
+  object_type: string;
+  object_name: string;
+  oracle_source: string;
+  converted_code: string | null;
+  confidence: string;           // "high" | "medium" | "low"
+  review_notes: string;
+  patterns_applied: string[];
+  error: string | null;
+}
+
+export interface CodeConversionResponse {
+  run_id: string;
+  objects_found: number;
+  objects_attempted: number;
+  objects_converted: number;
+  objects_failed: number;
+  results: ConversionObjectResult[];
+}
+
+export interface CodeConversionRunItem {
+  run_id: string;
+  created_at: string;
+  objects_found: number;
+  objects_attempted: number;
+  objects_converted: number;
+  objects_failed: number;
+}
+
+export async function runCodeConversion(
+  id: string,
+  limit = 10,
+): Promise<CodeConversionResponse> {
+  const { data } = await api.post<CodeConversionResponse>(
+    `/api/v1/migrations/${id}/convert-code?limit=${limit}`,
+  );
+  return data;
+}
+
+export async function listCodeConversionRuns(
+  id: string,
+): Promise<CodeConversionRunItem[]> {
+  const { data } = await api.get<CodeConversionRunItem[]>(
+    `/api/v1/migrations/${id}/convert-code`,
+  );
+  return data;
+}
+
+export async function getCodeConversionRun(
+  migrationId: string,
+  runId: string,
+): Promise<CodeConversionResponse> {
+  const { data } = await api.get<CodeConversionResponse>(
+    `/api/v1/migrations/${migrationId}/convert-code/${runId}`,
+  );
+  return data;
+}
