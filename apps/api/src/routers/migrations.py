@@ -38,6 +38,7 @@ from sqlalchemy.orm import Session
 from ..auth.roles import require_role
 from ..db import get_db
 from ..models import (
+    CompatScanSnapshot,
     CutoverReadinessSnapshot,
     DataSampleResult,
     MigrationCheckpointRecord,
@@ -47,6 +48,7 @@ from ..models import (
 from ..services.audit import log_event
 from ..services.anomaly_service import anomaly_check_record
 from ..services.cutover_service import assess_cutover_readiness
+from ..services.compat_service import scan_compat
 from ..services.monitor_service import monitor_migration
 from ..services.sampler_service import sample_migration
 from ..services.migration_runner import (
@@ -942,6 +944,121 @@ def list_cutover_readiness(
             score=s.score,
             blocking_count=s.blocking_count,
             advisory_count=s.advisory_count,
+        )
+        for s in snaps
+    ]
+
+
+# ─── Layer 10: Application SQL compatibility scanner ─────────────────────────
+
+
+class CompatFindingItem(BaseModel):
+    construct: str = Field(..., alias="construct")
+    severity: str       # blocking | advisory | info
+    pg_equivalent: str
+    locations: List[str]
+    count: int
+
+    model_config = {"populate_by_name": True}
+
+
+class CompatScanResponse(BaseModel):
+    """Layer 10 application SQL compatibility scan report."""
+
+    snapshot_id: str
+    oracle_objects_scanned: int
+    blocking_count: int
+    advisory_count: int
+    info_count: int
+    complexity_score: int  # 0–100; 100 = fully PG-compatible
+    findings: List[CompatFindingItem]
+
+
+class CompatScanItem(BaseModel):
+    """Summary row for the history list."""
+
+    snapshot_id: str
+    created_at: str
+    oracle_objects_scanned: int
+    blocking_count: int
+    advisory_count: int
+    complexity_score: int
+
+
+@router.post(
+    "/{migration_id}/compat-scan",
+    response_model=CompatScanResponse,
+)
+def run_compat_scan(
+    migration_id: str,
+    db: Session = Depends(get_db),
+    caller=Depends(require_role("admin", "operator")),
+) -> CompatScanResponse:
+    """Run Layer 10 application SQL compatibility scan against the Oracle source.
+
+    Connects to the Oracle source schema and scans views, stored procedures,
+    functions, triggers, and packages for SQL constructs that require changes
+    when migrating to PostgreSQL (ROWNUM, CONNECT BY, NVL, DECODE, etc.).
+
+    Returns a 0-100 complexity score and per-construct findings with
+    recommended PostgreSQL equivalents. Safe to call before data movement
+    starts — only reads Oracle system views."""
+    record = _load_or_404_for_user(db, migration_id, caller)
+    try:
+        result, snap = scan_compat(record, db)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"compat scan failed: {str(exc).split(chr(10))[0][:300]}",
+        )
+    return CompatScanResponse(
+        snapshot_id=str(snap.id),
+        oracle_objects_scanned=result.oracle_objects_scanned,
+        blocking_count=result.blocking_count,
+        advisory_count=result.advisory_count,
+        info_count=result.info_count,
+        complexity_score=result.complexity_score,
+        findings=[
+            CompatFindingItem(
+                construct=f.construct,
+                severity=f.severity,
+                pg_equivalent=f.pg_equivalent,
+                locations=f.locations,
+                count=f.count,
+            )
+            for f in result.findings
+        ],
+    )
+
+
+@router.get(
+    "/{migration_id}/compat-scan",
+    response_model=List[CompatScanItem],
+)
+def list_compat_scans(
+    migration_id: str,
+    db: Session = Depends(get_db),
+    caller=Depends(require_role("admin", "operator", "viewer")),
+) -> List[CompatScanItem]:
+    """Return the 10 most recent compatibility scan results for a migration."""
+    record = _load_or_404_for_user(db, migration_id, caller)
+    snaps = (
+        db.query(CompatScanSnapshot)
+        .filter(CompatScanSnapshot.migration_id == record.id)
+        .order_by(CompatScanSnapshot.created_at.desc())
+        .limit(10)
+        .all()
+    )
+    return [
+        CompatScanItem(
+            snapshot_id=str(s.id),
+            created_at=s.created_at.isoformat(),
+            oracle_objects_scanned=s.oracle_objects_scanned,
+            blocking_count=s.blocking_count,
+            advisory_count=s.advisory_count,
+            complexity_score=s.complexity_score,
         )
         for s in snaps
     ]

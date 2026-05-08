@@ -806,6 +806,37 @@ class CutoverReadinessSnapshot(Base):
     score = Column(Integer, nullable=False)  # 0–100
 
 
+class CompatScanSnapshot(Base):
+    """Layer 10 — application SQL compatibility scan snapshot.
+
+    One row per scan invocation. Stores per-construct findings and the
+    0-100 complexity score so operators can track compatibility trend.
+    """
+
+    __tablename__ = "compat_scan_snapshots"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    migration_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("migrations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True
+    )
+    created_at = Column(
+        DateTime(timezone=True), default=utc_now, nullable=False, index=True
+    )
+    oracle_objects_scanned = Column(Integer, nullable=False, default=0)
+    blocking_count = Column(Integer, nullable=False, default=0)
+    advisory_count = Column(Integer, nullable=False, default=0)
+    info_count = Column(Integer, nullable=False, default=0)
+    complexity_score = Column(Integer, nullable=False, default=100)
+    # List of CompatFinding dicts: {construct, severity, pg_equivalent, locations, count}
+    findings = Column(JSONB, nullable=False, default=list)
+
+
 # Pydantic response models (not ORM)
 
 

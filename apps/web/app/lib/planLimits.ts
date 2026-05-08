@@ -17,17 +17,17 @@ export const PLAN_LIMITS: Record<NonNullable<User['plan']>, Limits> = {
   trial: {
     databases: 1,
     migrations_per_month: 3,
-    llm_per_month: 50,
+    llm_per_month: 10,
   },
   starter: {
-    databases: 3,
-    migrations_per_month: 20,
-    llm_per_month: 500,
+    databases: 5,
+    migrations_per_month: 25,
+    llm_per_month: 100,
   },
   professional: {
-    databases: 10,
+    databases: 20,
     migrations_per_month: 100,
-    llm_per_month: 5000,
+    llm_per_month: 500,
   },
   enterprise: {
     databases: null,

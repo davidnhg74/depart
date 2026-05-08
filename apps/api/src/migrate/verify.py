@@ -65,11 +65,10 @@ def hash_row(values: Sequence) -> bytes:
     same byte stream.
 
     LOB note: oracledb returns CLOB/BLOB as ``oracledb.LOB`` objects
-    that need ``.read()`` to materialize. They currently fall into the
-    ``R:`` fallback — which produces a fresh address every read —
-    so verification will *not* match for tables with LOB columns.
-    Fix is to materialize LOBs at row-read time in the runner; tracked
-    separately.
+    that need ``.read()`` to materialize. The runner's ``_materialize_value``
+    (runner.py) calls ``.read()`` on any object with that method before
+    rows reach this function, so LOBs arrive here as ``str`` or ``bytes``
+    and hash correctly via the ``S:`` / ``X:`` buckets above.
     """
     parts: List[bytes] = [str(len(values)).encode()]
     for v in values:

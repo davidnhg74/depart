@@ -26,7 +26,7 @@ PLAN_LIMITS = {
         "databases": 1,
         "migrations_per_month": 3,
         "llm_per_month": 10,
-        "days": 14,
+        "days": 30,
         # Per-call upload cap for the /troubleshoot/analyze endpoint.
         # Anonymous and trial users get the same 50MB ceiling — large
         # enough for any realistic single error log, small enough to

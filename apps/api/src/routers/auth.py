@@ -84,7 +84,7 @@ async def signup(request: SignupRequest, db: Session = Depends(get_db)):
             hashed_password=hash_password(request.password),
             plan=PlanEnum.TRIAL,
             trial_starts_at=utc_now(),
-            trial_expires_at=utc_now() + timedelta(days=14),
+            trial_expires_at=utc_now() + timedelta(days=30),
             usage_reset_at=utc_now(),
         )
 

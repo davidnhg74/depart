@@ -881,3 +881,47 @@ export async function listCutoverReadiness(
   );
   return data;
 }
+
+
+// ─── Layer 10: Application SQL Compatibility Scanner ─────────────────────────
+
+export interface CompatFindingItem {
+  construct: string;
+  severity: string;       // "blocking" | "advisory" | "info"
+  pg_equivalent: string;
+  locations: string[];
+  count: number;
+}
+
+export interface CompatScanResponse {
+  snapshot_id: string;
+  oracle_objects_scanned: number;
+  blocking_count: number;
+  advisory_count: number;
+  info_count: number;
+  complexity_score: number;  // 0–100; 100 = fully PG-compatible
+  findings: CompatFindingItem[];
+}
+
+export interface CompatScanItem {
+  snapshot_id: string;
+  created_at: string;
+  oracle_objects_scanned: number;
+  blocking_count: number;
+  advisory_count: number;
+  complexity_score: number;
+}
+
+export async function runCompatScan(id: string): Promise<CompatScanResponse> {
+  const { data } = await api.post<CompatScanResponse>(
+    `/api/v1/migrations/${id}/compat-scan`,
+  );
+  return data;
+}
+
+export async function listCompatScans(id: string): Promise<CompatScanItem[]> {
+  const { data } = await api.get<CompatScanItem[]>(
+    `/api/v1/migrations/${id}/compat-scan`,
+  );
+  return data;
+}

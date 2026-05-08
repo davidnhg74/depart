@@ -34,6 +34,7 @@ import { useAuthStore } from '@/app/store/authStore';
 
 import { StatusBadge } from '../StatusBadge';
 import AnomalyPanel from './AnomalyPanel';
+import CompatPanel from './CompatPanel';
 import CutoverPanel from './CutoverPanel';
 import MaskingPanel from './MaskingPanel';
 import MonitorPanel from './MonitorPanel';
@@ -289,6 +290,7 @@ function DetailContent() {
         <ConfigPanel migration={migration} />
         <MaskingPanel migrationId={migration.id} />
         <SchedulePanel migrationId={migration.id} />
+        <CompatPanel migrationId={migration.id} />
         <AnomalyPanel migrationId={migration.id} status={migration.status} />
         <SamplerPanel migrationId={migration.id} />
         <MonitorPanel migrationId={migration.id} />
