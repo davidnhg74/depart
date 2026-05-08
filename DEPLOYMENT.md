@@ -4,8 +4,39 @@
 
 - Docker & Docker Compose 20.10+
 - PostgreSQL 15+ (if not using Docker)
-- Python 3.14+ (for local development)
+- Python 3.12+ (for local development)
 - Node.js 18+ (for web frontend)
+
+## Supported platforms
+
+Hafen ships as a set of Docker images. The supported runtime is
+**Linux on `linux/amd64` or `linux/arm64`**, with a **glibc** base
+(`python:3.12-slim` for the API, `node:20-alpine` / musl for the
+web frontend).
+
+| Platform | Status | Notes |
+|---|---|---|
+| Linux x86_64 (glibc) | **Supported** | Tested via `ubuntu-latest` CI; primary runtime for Fly.io machines, Render, Railway, Cloud Run, K8s nodes. |
+| Linux ARM64 (glibc) | **Supported** | Same image (multi-arch buildable); used for Apple Silicon dev and ARM cloud instances. |
+| Linux Alpine (musl) | Frontend only | `apps/web` uses `node:20-alpine`. The API stays on glibc — `psycopg[binary]` and `python3-saml` need `libxmlsec1`/`libxml2` from Debian. |
+| macOS / Windows (dev only) | Best-effort | The local-dev path (`uvicorn src.main:app --reload`) generally works; `/tmp/hafen_uploads` and `arq`-on-Redis assume POSIX semantics. Run via Docker Desktop for parity. |
+| Windows Server (native) | **Unsupported** | No CI, no testing. Blockers: `arq` worker (no Windows process spawn), hardcoded `/tmp/hafen_uploads` paths, `python3-saml` C-extension build chain. Run inside WSL2 + Docker if needed. |
+| AIX (POWER) | **Unsupported** | No `oracledb`, `psycopg`, or `pgvector` binary wheels for AIX. Would require source builds against IBM's compilers. |
+| Solaris / illumos | **Unsupported** | Same wheel-availability problem as AIX. No CI coverage. |
+| FreeBSD / OpenBSD / NetBSD | **Unsupported** | Postgres runs there, Python runs there, but our Docker base + dependency wheels do not. |
+
+**Endianness is not a concern** in either direction. Hafen serializes
+everything as JSON, JWT, or Postgres-typed columns (vectors are
+IEEE 754 floats, hashes are byte-strings) — nothing in the codebase
+uses raw `struct.pack`/`unpack` of multi-byte integers in a way
+endianness would matter. A big-endian POWER or SPARC box would
+read/write the same data correctly; the blocker for those platforms
+is dependency wheels, not byte order.
+
+If you need a platform not on this list, the Postgres database itself
+can run anywhere Postgres runs — only the API/worker container is
+Linux-pinned. For future expansion targets see the planning notes
+at `~/.claude/plans/hafen-platform-portability.md`.
 
 ## Quick Start with Docker
 
