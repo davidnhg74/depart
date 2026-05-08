@@ -419,6 +419,40 @@ export async function checkAnomalies(id: string): Promise<AnomalyCheckResponse> 
 }
 
 
+export interface MonitorFindingItem {
+  severity: string;
+  check_name: string;
+  table: string | null;
+  message: string;
+  recommended_action: string;
+}
+
+export interface MonitorResponse {
+  overall_severity: string;   // "clean" | "info" | "warning" | "error"
+  findings: MonitorFindingItem[];
+  snapshot_id: string;
+  tables_checked: number;
+}
+
+export interface MonitorSnapshotItem {
+  snapshot_id: string;
+  created_at: string;
+  overall_severity: string;
+  tables_checked: number;
+  findings: MonitorFindingItem[];
+}
+
+export async function runMonitor(id: string): Promise<MonitorResponse> {
+  const { data } = await api.post<MonitorResponse>(`/api/v1/migrations/${id}/monitor`);
+  return data;
+}
+
+export async function listMonitorSnapshots(id: string): Promise<MonitorSnapshotItem[]> {
+  const { data } = await api.get<MonitorSnapshotItem[]>(`/api/v1/migrations/${id}/monitor`);
+  return data;
+}
+
+
 export interface ConnectionTestResult {
   ok: boolean;
   dialect: 'oracle' | 'postgres' | null;
