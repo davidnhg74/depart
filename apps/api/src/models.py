@@ -717,6 +717,36 @@ class AnomalyAnalysis(Base):
     tables_sampled = Column(Integer, nullable=False, default=0)
 
 
+class DataSampleResult(Base):
+    """Layer 8 — row-level data sampling result.
+
+    One row per sampling invocation. Stores per-column mismatches found
+    when comparing Oracle source rows against PG target rows by PK.
+    """
+
+    __tablename__ = "data_sample_results"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    migration_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("migrations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True
+    )
+    created_at = Column(
+        DateTime(timezone=True), default=utc_now, nullable=False, index=True
+    )
+    sample_size = Column(Integer, nullable=False)
+    tables_sampled = Column(Integer, nullable=False, default=0)
+    tables_skipped = Column(Integer, nullable=False, default=0)
+    mismatch_count = Column(Integer, nullable=False, default=0)
+    mismatches = Column(JSONB, nullable=False, default=list)
+    overall_status = Column(String(20), nullable=False)  # clean | mismatches_found
+
+
 class ProductionMonitorSnapshot(Base):
     """Layer 7 — production monitor snapshot.
 

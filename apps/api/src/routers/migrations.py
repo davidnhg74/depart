@@ -36,10 +36,11 @@ from sqlalchemy.orm import Session
 
 from ..auth.roles import require_role
 from ..db import get_db
-from ..models import MigrationCheckpointRecord, MigrationRecord, ProductionMonitorSnapshot
+from ..models import DataSampleResult, MigrationCheckpointRecord, MigrationRecord, ProductionMonitorSnapshot
 from ..services.audit import log_event
 from ..services.anomaly_service import anomaly_check_record
 from ..services.monitor_service import monitor_migration
+from ..services.sampler_service import sample_migration
 from ..services.migration_runner import (
     advise_record,
     dry_run_plan,
@@ -708,6 +709,113 @@ def list_monitor_snapshots(
             findings=[MonitorFindingItem(**f) for f in (s.findings or [])],
         )
         for s in snapshots
+    ]
+
+
+class SampleMismatchItem(BaseModel):
+    table: str
+    pk_values: dict
+    column: str
+    oracle_value: Optional[str]
+    pg_value: Optional[str]
+    mismatch_type: str  # value_mismatch | missing_in_pg | null_mismatch
+
+
+class SampleRequest(BaseModel):
+    sample_size: int = Field(default=100, ge=1, le=10000)
+
+
+class SampleResponse(BaseModel):
+    """Layer 8 row-level data sampler report."""
+
+    overall_status: str  # "clean" | "mismatches_found"
+    result_id: str
+    tables_sampled: int
+    tables_skipped: int
+    mismatch_count: int
+    mismatches: List[SampleMismatchItem]
+
+
+class SampleResultItem(BaseModel):
+    result_id: str
+    created_at: str
+    overall_status: str
+    tables_sampled: int
+    tables_skipped: int
+    mismatch_count: int
+    sample_size: int
+
+
+@router.post("/{migration_id}/sample", response_model=SampleResponse)
+def run_sample(
+    migration_id: str,
+    body: SampleRequest = SampleRequest(),
+    db: Session = Depends(get_db),
+    caller=Depends(require_role("admin", "operator")),
+) -> SampleResponse:
+    """Run Layer 8 row-level data sampler.
+
+    Samples up to sample_size rows per table from the Oracle source,
+    fetches matching rows from the PG target by primary key, and reports
+    column-level value mismatches. Tables without a primary key are skipped.
+
+    Requires both source_url and target_url on the migration record."""
+    record = _load_or_404_for_user(db, migration_id, caller)
+    if not record.source_url:
+        raise HTTPException(
+            status_code=400,
+            detail="Migration has no source_url — cannot run data sampler.",
+        )
+    if not record.target_url:
+        raise HTTPException(
+            status_code=400,
+            detail="Migration has no target_url — cannot run data sampler.",
+        )
+    try:
+        result = sample_migration(record, db, sample_size=body.sample_size)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"sampler failed: {str(exc).split(chr(10))[0][:300]}",
+        )
+    return SampleResponse(
+        overall_status=result.overall_status,
+        result_id=result.result_id,
+        tables_sampled=result.tables_sampled,
+        tables_skipped=result.tables_skipped,
+        mismatch_count=result.mismatch_count,
+        mismatches=[SampleMismatchItem(**m.to_dict()) for m in result.mismatches],
+    )
+
+
+@router.get("/{migration_id}/sample", response_model=List[SampleResultItem])
+def list_sample_results(
+    migration_id: str,
+    db: Session = Depends(get_db),
+    caller=Depends(require_role("admin", "operator", "viewer")),
+) -> List[SampleResultItem]:
+    """Return the 10 most recent data sampling results for a migration."""
+    record = _load_or_404_for_user(db, migration_id, caller)
+    results = (
+        db.query(DataSampleResult)
+        .filter(DataSampleResult.migration_id == record.id)
+        .order_by(DataSampleResult.created_at.desc())
+        .limit(10)
+        .all()
+    )
+    return [
+        SampleResultItem(
+            result_id=str(r.id),
+            created_at=r.created_at.isoformat(),
+            overall_status=r.overall_status,
+            tables_sampled=r.tables_sampled,
+            tables_skipped=r.tables_skipped,
+            mismatch_count=r.mismatch_count,
+            sample_size=r.sample_size,
+        )
+        for r in results
     ]
 
 

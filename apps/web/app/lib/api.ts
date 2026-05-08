@@ -453,6 +453,53 @@ export async function listMonitorSnapshots(id: string): Promise<MonitorSnapshotI
 }
 
 
+export interface SampleMismatchItem {
+  table: string;
+  pk_values: Record<string, unknown>;
+  column: string;
+  oracle_value: string | null;
+  pg_value: string | null;
+  mismatch_type: string;  // value_mismatch | missing_in_pg | null_mismatch
+}
+
+export interface SampleResponse {
+  overall_status: string;   // "clean" | "mismatches_found"
+  result_id: string;
+  tables_sampled: number;
+  tables_skipped: number;
+  mismatch_count: number;
+  mismatches: SampleMismatchItem[];
+}
+
+export interface SampleResultItem {
+  result_id: string;
+  created_at: string;
+  overall_status: string;
+  tables_sampled: number;
+  tables_skipped: number;
+  mismatch_count: number;
+  sample_size: number;
+}
+
+export async function runSample(
+  id: string,
+  sampleSize = 100,
+): Promise<SampleResponse> {
+  const { data } = await api.post<SampleResponse>(
+    `/api/v1/migrations/${id}/sample`,
+    { sample_size: sampleSize },
+  );
+  return data;
+}
+
+export async function listSampleResults(id: string): Promise<SampleResultItem[]> {
+  const { data } = await api.get<SampleResultItem[]>(
+    `/api/v1/migrations/${id}/sample`,
+  );
+  return data;
+}
+
+
 export interface ConnectionTestResult {
   ok: boolean;
   dialect: 'oracle' | 'postgres' | null;

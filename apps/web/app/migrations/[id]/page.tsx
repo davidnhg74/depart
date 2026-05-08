@@ -36,6 +36,7 @@ import { StatusBadge } from '../StatusBadge';
 import AnomalyPanel from './AnomalyPanel';
 import MaskingPanel from './MaskingPanel';
 import MonitorPanel from './MonitorPanel';
+import SamplerPanel from './SamplerPanel';
 import SchedulePanel from './SchedulePanel';
 
 
@@ -288,6 +289,7 @@ function DetailContent() {
         <MaskingPanel migrationId={migration.id} />
         <SchedulePanel migrationId={migration.id} />
         <AnomalyPanel migrationId={migration.id} status={migration.status} />
+        <SamplerPanel migrationId={migration.id} />
         <MonitorPanel migrationId={migration.id} />
         <CheckpointsPanel checkpoints={migration.checkpoints} />
       </div>
