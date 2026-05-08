@@ -12,6 +12,7 @@
  */
 
 import Link from 'next/link';
+import ROICalculator from './components/ROICalculator';
 
 
 export default function LandingPage() {
@@ -19,6 +20,7 @@ export default function LandingPage() {
     <div className="w-full">
       <Hero />
       <ProblemSection />
+      <ROICalculator />
       <ThreePillars />
       <HowItWorks />
       <WhatsInTheBox />
